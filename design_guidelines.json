@@ -1,0 +1,103 @@
+{
+  "project_identity": {
+    "name": "CAVI",
+    "domain": "Crypto Investment Platform",
+    "theme": "dark",
+    "archetype": "Archetype 5 (Luxury) blended with Pro Terminal (Crypto/Web3)",
+    "design_philosophy": "A premium, high-trust fintech aesthetic. Rejects generic 'tech-bro neon' by grounding the UI in deep, cinematic darkness with sharp, high-contrast data visualization. Information architecture mimics high-end trading terminals."
+  },
+  "colors": {
+    "background": {
+      "base": "#05080f",
+      "surface": "#0a0f1a",
+      "surface_elevated": "#121a2f"
+    },
+    "accents": {
+      "purple": "#6c63ff",
+      "green": "#00d4a0",
+      "gold": "#f0a500",
+      "red": "#ff4757"
+    },
+    "text": {
+      "primary": "#ffffff",
+      "secondary": "#94a3b8",
+      "muted": "#475569"
+    },
+    "borders": {
+      "subtle": "rgba(255, 255, 255, 0.06)",
+      "focus": "#6c63ff"
+    },
+    "strategy": {
+      "purple_usage": "CRITICAL: Do not use purple (#6c63ff) for primary Call-to-Action buttons. Use it strictly for ambient glows, active states on subtle elements, and decorative 'Tracing Beam' borders. Avoids the 'purple CTA' anti-pattern.",
+      "green_usage": "Use #00d4a0 for primary financial actions (Deposit, Invest), positive ROI numbers, and success states.",
+      "gold_usage": "Use #f0a500 for wealth-oriented highlights (e.g., 'Grow Your Wealth' accents, premium tiers, projected ROI numbers).",
+      "red_usage": "Use #ff4757 for withdrawals, negative trends, and destructive admin actions."
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Unbounded, sans-serif",
+      "body": "Satoshi, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "rules": {
+      "h1": "text-5xl md:text-6xl+ font-black tracking-tighter leading-none. Never center by default; use left-aligned asymmetric layouts.",
+      "h2": "text-3xl md:text-4xl font-bold tracking-tight.",
+      "body": "text-base leading-relaxed text-[#94a3b8].",
+      "data": "CRITICAL: All crypto prices, wallet addresses, ROI percentages, and table numerics MUST use JetBrains Mono (tracking-tight) to evoke a 'pro terminal' feel.",
+      "overlines": "text-xs font-mono uppercase tracking-[0.2em] text-[#6c63ff] or #f0a500."
+    }
+  },
+  "spacing_and_layout": {
+    "global": "Generous Spacing Philosophy. Tailwind Scale: p-6, p-8, p-12, p-24.",
+    "marketing_pages": "Mode A: The 'Tetris' Grid. Base: grid-cols-1 md:grid-cols-12 gap-8. Span logic: Hero spanning 8 cols, calculators spanning 4 cols. Assymetry is mandatory.",
+    "dashboard_and_admin": "Mode B: The 'Control Room' Grid. Dense, data-heavy. Base: grid-cols-1 md:grid-cols-4 gap-4. Every pixel utilized. h-full on children.",
+    "alignment": "Left-align dense content and headings. Never center unless explicitly necessary for an isolated component."
+  },
+  "surface_strategies": {
+    "hero_overlay": "Max overlay opacity bg-[#05080f]/80 to 90%. Must let abstract backgrounds breathe while maintaining APCA text contrast.",
+    "dashboard_cards": "Glassmorphism (The 'Crystal' Variant). bg-[#0a0f1a]/60 backdrop-blur-2xl border-t border-l border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]. Radius: rounded-xl.",
+    "admin_tables": "Grid Borders (The 'Technical' Look). border-collapse, expose the skeleton. border-b border-white/5 on all rows. No soft shadows inside the admin control panel.",
+    "noise_texture": "Apply a subtle SVG noise overlay across the global background to kill 'digital flatness'."
+  },
+  "components": {
+    "buttons": {
+      "primary_finance": "bg-[#00d4a0]/10 text-[#00d4a0] border border-[#00d4a0]/40 hover:bg-[#00d4a0] hover:text-[#05080f] transition-all duration-300 rounded-sm font-mono uppercase text-sm tracking-wider.",
+      "web3_wallet": "bg-[#121a2f] text-white border border-white/10 hover:border-[#6c63ff]/50 hover:bg-[#121a2f]/80 flex items-center justify-between px-4 py-3 rounded-lg backdrop-blur-md.",
+      "admin_action": "bg-white/5 text-white hover:bg-white/10 text-xs px-3 py-1 rounded-sm."
+    },
+    "inputs": "Shadcn highly customized. bg-[#0a0f1a] border-white/10 focus:border-[#6c63ff] focus:ring-1 focus:ring-[#6c63ff]/50 rounded-sm font-mono placeholder:text-white/20.",
+    "charts": "Recharts. Remove grid lines entirely or use stroke='rgba(255,255,255,0.02)'. Use glowing drop-shadows on the line paths. Area charts should use a gradient from #00d4a0 to transparent.",
+    "toggles": "Shadcn Switch. Custom active color: bg-[#00d4a0]."
+  },
+  "motion_and_interactions": {
+    "hero": "Framer Motion: Staggered text reveal (y: 20, opacity: 0 -> y: 0, opacity: 1).",
+    "ticker": "The 'Editorial Ribbon'. react-fast-marquee. Very slow, smooth drift. JetBrains Mono. Green/Red text depending on ticker symbol.",
+    "hover_states": "Cards lift slightly (-translate-y-1). 'Tracing Beam' effect on ROI calculator borders using Framer Motion or gradient masks.",
+    "accessibility": "respect prefers-reduced-motion."
+  },
+  "media": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.pexels.com/photos/13156181/pexels-photo-13156181.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Dark abstract close-up of illuminated geometric metallic shapes. Apply heavy dark overlay (#05080f/85)."
+      },
+      {
+        "category": "marketing_abstract_1",
+        "url": "https://images.pexels.com/photos/26559580/pexels-photo-26559580.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Artistic blend of geometric shapes in purple/blue tones. Use for the 'Supported Networks' section background or auth page split-screen with high blur and heavy dark overlay."
+      }
+    ],
+    "icons_strategy": "Use react-icons/fa or react-icons/si for Web3 networks (Ethereum, Solana, BNB, Tron). Use lucide-react for standard dashboard actions (wallets, admin, charts)."
+  },
+  "pages_instructions": {
+    "landing_page": "Hero: 'Grow Your Wealth With CAVI' in Unbounded font, left-aligned, overlapping the hero_background. Live crypto ticker (marquee) separating the hero and next section. ROI Calculator: Neumorphic/Crystal glass card on the right side of the bento grid. Supported Networks: display as tall/square bento items with subtle hover glows.",
+    "auth_pages": "Split screen layout. Left: marketing_abstract_1 with glassmorphism quote card. Right: Auth forms. Connect Wallet buttons stacked above standard Email/Pass fields.",
+    "user_dashboard": "Sidebar nav. Wallets Page: 'Generate Address' button reveals string in JetBrains Mono. ROI Page: Large top stat (Today's Rate in Gold/Green), Recharts 30-day area chart below. Empty state uses dashed borders and 'No Deposits Yet'. Withdrawals Page: strict, terminal-like form.",
+    "admin_panel": "Dense layout. Header with global stats. 'All Users' table with Shadcn toggles for admin status. 'ROI Control' inputs to manually override rates. Withdrawals management table with Approve/Reject actions in Green/Red."
+  },
+  "testing": {
+    "attributes": "CRITICAL: All interactive and key informational elements MUST include a data-testid attribute. Example: data-testid='login-submit-button', data-testid='roi-calculator-slider'."
+  }
+}
