@@ -222,14 +222,13 @@ class GlobalRoiReq(BaseModel):
 # Helpers to assemble user financials
 # ----------------------------------------------------------------------------
 async def user_financials(user_id: str) -> dict:
-    roi_cursor = db.roi.find({"userId": user_id}, {"_id": 0})
-    roi_total = 0.0
-    async for r in roi_cursor:
-        roi_total += r.get("amount", 0)
-    wd_cursor = db.withdrawals.find({"userId": user_id, "status": "approved"}, {"_id": 0})
-    wd_total = 0.0
-    async for w in wd_cursor:
-        wd_total += w.get("netAmount", 0)
+    roi_agg = await db.roi.aggregate(
+        [{"$match": {"userId": user_id}}, {"$group": {"_id": None, "t": {"$sum": "$amount"}}}]).to_list(1)
+    roi_total = roi_agg[0]["t"] if roi_agg else 0.0
+    wd_agg = await db.withdrawals.aggregate(
+        [{"$match": {"userId": user_id, "status": "approved"}},
+         {"$group": {"_id": None, "t": {"$sum": "$netAmount"}}}]).to_list(1)
+    wd_total = wd_agg[0]["t"] if wd_agg else 0.0
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     deposit_base = user.get("depositBase", 0) if user else 0
     balance = deposit_base + roi_total - wd_total
@@ -481,9 +480,19 @@ async def admin_stats(admin: dict = Depends(require_admin)):
 @api.get("/admin/users")
 async def admin_users(admin: dict = Depends(require_admin)):
     users = await db.users.find({}, {"_id": 0, "password": 0}).sort("createdAt", -1).to_list(1000)
+    roi_map = {}
+    async for r in db.roi.aggregate([{"$group": {"_id": "$userId", "t": {"$sum": "$amount"}}}]):
+        roi_map[r["_id"]] = r["t"]
+    wd_map = {}
+    async for w in db.withdrawals.aggregate(
+        [{"$match": {"status": "approved"}}, {"$group": {"_id": "$userId", "t": {"$sum": "$netAmount"}}}]):
+        wd_map[w["_id"]] = w["t"]
     for u in users:
-        fin = await user_financials(u["id"])
-        u["financials"] = fin
+        base = u.get("depositBase", 0)
+        roi_t = round(roi_map.get(u["id"], 0), 4)
+        wd_t = round(wd_map.get(u["id"], 0), 4)
+        u["financials"] = {"depositBase": base, "roiEarned": roi_t,
+                           "withdrawn": wd_t, "balance": round(base + roi_t - wd_t, 4)}
     return {"users": users}
 
 @api.patch("/admin/users/{user_id}/roi")
@@ -514,8 +523,11 @@ async def admin_wallets(admin: dict = Depends(require_admin)):
     wallets = await db.wallets.find({}, {"_id": 0}).sort("createdAt", -1).to_list(1000)
     keys = await db.wallet_keys.find({}, {"_id": 0, "encryptedPrivateKey": 0}).to_list(1000)
     key_map = {k["walletId"]: k for k in keys}
+    user_ids = list({w["userId"] for w in wallets})
+    users = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0}).to_list(len(user_ids) or 1)
+    user_map = {u["id"]: u for u in users}
     for w in wallets:
-        u = await db.users.find_one({"id": w["userId"]}, {"_id": 0})
+        u = user_map.get(w["userId"])
         w["ownerUsername"] = u.get("username") if u else "—"
         w["ownerEmail"] = u.get("email") if u else None
         w["keyId"] = key_map.get(w["id"], {}).get("id")
@@ -537,8 +549,11 @@ async def admin_view_key(key_id: str, admin: dict = Depends(require_admin)):
 @api.get("/admin/withdrawals")
 async def admin_withdrawals(admin: dict = Depends(require_admin)):
     items = await db.withdrawals.find({}, {"_id": 0}).sort("requestedAt", -1).to_list(1000)
+    user_ids = list({w["userId"] for w in items})
+    users = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0}).to_list(len(user_ids) or 1)
+    user_map = {u["id"]: u for u in users}
     for w in items:
-        u = await db.users.find_one({"id": w["userId"]}, {"_id": 0})
+        u = user_map.get(w["userId"])
         w["username"] = u.get("username") if u else "—"
         w["wdAllowed"] = u.get("wdAllowed", True) if u else True
     return {"withdrawals": items}
@@ -576,8 +591,11 @@ async def admin_get_settings(admin: dict = Depends(require_admin)):
 @api.get("/admin/audit")
 async def admin_audit(admin: dict = Depends(require_admin)):
     items = await db.audit.find({}, {"_id": 0}).sort("createdAt", -1).to_list(200)
+    admin_ids = list({a["adminId"] for a in items})
+    admins = await db.users.find({"id": {"$in": admin_ids}}, {"_id": 0}).to_list(len(admin_ids) or 1)
+    admin_map = {u["id"]: u for u in admins}
     for a in items:
-        adm = await db.users.find_one({"id": a["adminId"]}, {"_id": 0})
+        adm = admin_map.get(a["adminId"])
         a["adminName"] = adm.get("username") if adm else a["adminId"]
     return {"audit": items}
 
