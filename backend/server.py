@@ -609,20 +609,24 @@ async def run_roi_cycle(manual: bool = False) -> int:
         return 0
     cycle_date = datetime.now(timezone.utc).date().isoformat()
     generated = 0
-    cursor = db.users.find({"roiAllowed": True, "depositBase": {"$gt": 0}}, {"_id": 0})
-    async for u in cursor:
-        existing = await db.roi.find_one({"userId": u["id"], "cycleDate": cycle_date})
-        if existing:
+    existing_rows = await db.roi.find({"cycleDate": cycle_date}, {"_id": 0, "userId": 1}).to_list(100000)
+    already = {r["userId"] for r in existing_rows}
+    users = await db.users.find({"roiAllowed": True, "depositBase": {"$gt": 0}}, {"_id": 0}).to_list(100000)
+    new_records = []
+    for u in users:
+        if u["id"] in already:
             continue
         deposit_base = u.get("depositBase", 0)
         rate = generate_roi_rate()
         amount = round(deposit_base * rate / 100.0, 4)
-        await db.roi.insert_one({
+        new_records.append({
             "id": str(uuid.uuid4()), "userId": u["id"], "depositBase": deposit_base,
             "rate": rate, "amount": amount, "cycleDate": cycle_date,
             "createdAt": datetime.now(timezone.utc).isoformat(),
         })
         generated += 1
+    if new_records:
+        await db.roi.insert_many(new_records)
     logger.info(f"ROI cycle complete: {generated} records (manual={manual})")
     return generated
 
