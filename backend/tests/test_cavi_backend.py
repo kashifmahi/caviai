@@ -130,19 +130,26 @@ class TestROI:
         assert d["history"] == []
 
     def test_admin_run_cycle_then_user_roi(self, session, user_ctx, super_token):
+        # Activate this user's deposits regardless of current PKT hour by backdating
+        # their roiStartDate (the new activation rule starts ROI next day for most deposits).
+        from pymongo import MongoClient
+        mc = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+        mdb = mc[os.environ.get("DB_NAME", "test_database")]
+        mdb.deposits.update_many({"userId": user_ctx["user"]["id"]}, {"$set": {"roiStartDate": "2020-01-01"}})
+        mc.close()
         # Ensure not paused
         session.patch(f"{API}/admin/settings/global-roi", json={"paused": False}, headers=auth_headers(super_token))
         r = session.post(f"{API}/admin/roi/run-cycle", headers=auth_headers(super_token))
         assert r.status_code == 200
         assert "generated" in r.json()
-        # User should now have ROI
+        # User should now have ROI (deposits are activated)
         r2 = session.get(f"{API}/roi", headers=auth_headers(user_ctx["token"]))
         assert r2.status_code == 200
         d = r2.json()
         assert d["hasDeposits"] is True
         assert d["depositBase"] == 1500
         assert d["totalRoi"] > 0
-        # ROI = depositBase * rate/100  (deposit-only, never compounds)
+        # ROI = activated_deposit_base * rate/100  (deposit-only, never compounds)
         if d["today"]:
             expected = round(d["today"]["depositBase"] * d["today"]["rate"] / 100.0, 4)
             assert abs(d["today"]["amount"] - expected) < 0.01

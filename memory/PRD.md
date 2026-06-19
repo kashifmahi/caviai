@@ -28,3 +28,10 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - P1: Google OAuth login (deferred per user choice).
 - P2: Email notifications (SendGrid) for withdrawal approvals; rate-limit/lockout on login.
 - P2: Split server.py into routers; production CORS allowlist; Phase 10 deployment (Netlify + Railway + Atlas).
+
+## Iteration 3 (2026-06-19) — Business rules
+- ✅ One wallet per network (max 4), immutable; UI gates owned networks, backend 400 on duplicate.
+- ✅ Wallet detail modal: per-wallet deposit ledger (amount, time, ROI active / "starts <date>").
+- ✅ Deposit abuse guard: confirm dialog each deposit; 3 attempts allowed; 4th → 403 + securityFlag + "contact admin" banner. Admin "Security" tab lists flagged users; Remove flag resets attempts (audit logged).
+- ✅ ROI activation timing: deposit 05:00–05:59 AM PKT → same-day 6 AM cycle; any other time → next-day 6 AM. run_roi_cycle uses activated deposit base only (PKT cycle date). Auto-runs unattended at 6 AM PKT.
+- Tested: 38 regression + 7 new-rule backend tests pass; full frontend E2E verified.
