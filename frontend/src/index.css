@@ -102,3 +102,59 @@ body {
 
 @keyframes float { 0%,100%{ transform: translateY(0);} 50%{ transform: translateY(-10px);} }
 .floaty { animation: float 6s ease-in-out infinite; }
+
+/* Aurora background blobs */
+.aurora {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.45;
+  pointer-events: none;
+  will-change: transform;
+}
+@keyframes auroraA { 0%,100%{ transform: translate(0,0) scale(1);} 33%{ transform: translate(60px,-40px) scale(1.15);} 66%{ transform: translate(-40px,30px) scale(0.9);} }
+@keyframes auroraB { 0%,100%{ transform: translate(0,0) scale(1);} 50%{ transform: translate(-70px,50px) scale(1.2);} }
+.aurora-a { animation: auroraA 18s ease-in-out infinite; }
+.aurora-b { animation: auroraB 22s ease-in-out infinite; }
+
+/* Shimmer gradient text */
+@keyframes shimmerMove { to { background-position: 200% center; } }
+.shimmer-text {
+  background: linear-gradient(90deg, #f0a500 0%, #fff4d6 25%, #f0a500 50%, #fff4d6 75%, #f0a500 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmerMove 5s linear infinite;
+}
+
+/* Glow pulse */
+@keyframes glowPulse { 0%,100%{ box-shadow: 0 0 22px rgba(108,99,255,0.18);} 50%{ box-shadow: 0 0 44px rgba(108,99,255,0.42);} }
+.glow-pulse { animation: glowPulse 3.5s ease-in-out infinite; }
+
+/* Orbit */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spinRev { to { transform: rotate(-360deg); } }
+.orbit { animation: spin 26s linear infinite; }
+.orbit-rev { animation: spinRev 26s linear infinite; }
+
+/* Tracing beam border */
+@keyframes traceMove { to { background-position: 300% center; } }
+.tracing {
+  background: linear-gradient(90deg, transparent, rgba(108,99,255,0.6), rgba(0,212,160,0.6), transparent);
+  background-size: 300% 100%;
+  animation: traceMove 4s linear infinite;
+}
+
+/* Marquee gradient mask for live payouts */
+@keyframes riseIn { from { opacity: 0; transform: translateY(14px);} to { opacity: 1; transform: translateY(0);} }
+.rise-in { animation: riseIn 0.5s ease-out; }
+
+/* Magnetic button sheen */
+.sheen { position: relative; overflow: hidden; }
+.sheen::after {
+  content: ""; position: absolute; top: 0; left: -120%; width: 60%; height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(255,255,255,0.18), transparent);
+  transform: skewX(-20deg); transition: left .6s ease;
+}
+.sheen:hover::after { left: 140%; }
