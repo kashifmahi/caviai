@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Users, TrendingUp, ArrowUpFromLine, Wallet, ShieldCheck, Settings as SettingsIcon,
-  LayoutDashboard, Search, Download, Play, Eye, Pause, Check, X, Copy, ArrowLeft, KeyRound,
+  LayoutDashboard, Search, Download, Play, Eye, Pause, Check, X, Copy, ArrowLeft, KeyRound, ShieldAlert,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -16,6 +16,7 @@ const TABS = [
   { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
   { id: "wallets", label: "Deposits & Wallets", icon: Wallet },
   { id: "access", label: "Admin Access", icon: ShieldCheck },
+  { id: "security", label: "Security", icon: ShieldAlert },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -41,6 +42,7 @@ export default function AdminPanel() {
   const [roleEmail, setRoleEmail] = useState("");
   const [roleValue, setRoleValue] = useState("admin");
   const [keyModal, setKeyModal] = useState(null);
+  const [fraud, setFraud] = useState([]);
   const isSuper = user?.role === "superadmin";
 
   const loadStats = async () => setStats((await api.get("/admin/stats")).data);
@@ -49,6 +51,7 @@ export default function AdminPanel() {
   const loadWallets = async () => setWallets((await api.get("/admin/wallets")).data.wallets);
   const loadAudit = async () => setAudit((await api.get("/admin/audit")).data.audit);
   const loadSettings = async () => setSettings((await api.get("/admin/settings")).data.settings);
+  const loadFraud = async () => setFraud((await api.get("/admin/fraud")).data.flagged);
 
   useEffect(() => {
     loadStats(); loadUsers();
@@ -58,6 +61,7 @@ export default function AdminPanel() {
     if (tab === "users" || tab === "roi") loadUsers();
     if (tab === "withdrawals") loadWithdrawals();
     if (tab === "wallets") loadWallets();
+    if (tab === "security") loadFraud();
     if (tab === "settings") loadSettings();
   }, [tab]);
 
@@ -96,8 +100,12 @@ export default function AdminPanel() {
       toast.error("Could not decrypt key");
     }
   };
-  const setRole = async () => {
-    try {
+  const clearFlag = async (u) => {
+    await api.patch(`/admin/users/${u.id}/clear-flag`);
+    toast.success(`${u.username} cleared — deposit attempts reset`);
+    loadFraud();
+  };
+  const setRole = async () => {    try {
       await api.patch("/admin/users/role", { email: roleEmail, role: roleValue });
       toast.success(`Set ${roleEmail} to ${roleValue}`);
       setRoleEmail(""); loadUsers();
@@ -377,6 +385,44 @@ export default function AdminPanel() {
                 <button onClick={setRole} className="btn-finance w-full rounded-sm py-3" data-testid="set-role-btn">Apply role</button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* SECURITY */}
+        {tab === "security" && (
+          <div data-testid="admin-security">
+            <h1 className="ff-head text-2xl font-bold mb-2">Security Threats</h1>
+            <p className="text-white/50 text-sm mb-6">Users flagged for exceeding deposit limits or suspicious activity. Deposits are blocked until you remove the flag.</p>
+            <div className="glass rounded-xl overflow-x-auto">
+              <table className="w-full text-sm" data-testid="fraud-table">
+                <thead>
+                  <tr className="text-white/40 overline text-left border-b border-white/10">
+                    <th className="p-4 font-normal">User</th>
+                    <th className="p-4 font-normal">Reason</th>
+                    <th className="p-4 font-normal">Deposit Base</th>
+                    <th className="p-4 font-normal text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fraud.map((u) => (
+                    <tr key={u.id} className="border-b border-white/5 ff-mono" data-testid={`fraud-row-${u.id}`}>
+                      <td className="p-4">
+                        <div className="ff-body text-white flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-[#ff4757]" /> {u.username}</div>
+                        <div className="text-xs text-white/40">{u.email || shortAddr(u.walletAddress)}</div>
+                      </td>
+                      <td className="p-4 text-[#ff4757] text-xs">{u.flagReason || "Flagged"}</td>
+                      <td className="p-4 text-white/60">${(u.financials?.depositBase || 0).toLocaleString()}</td>
+                      <td className="p-4 text-right">
+                        <button onClick={() => clearFlag(u)} data-testid={`clear-flag-${u.id}`} className="bg-[#00d4a0]/10 text-[#00d4a0] border border-[#00d4a0]/40 rounded-sm px-3 py-1 text-xs flex items-center gap-1 ml-auto">
+                          <Check className="w-3 h-3" /> Remove flag
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!fraud.length && <tr><td colSpan={4} className="p-8 text-center text-white/40">No flagged users. All clear.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

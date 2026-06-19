@@ -37,6 +37,8 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 ENCRYPTION_KEY = bytes.fromhex(os.environ['ENCRYPTION_KEY'])  # 32 bytes -> AES-256
+SUPPORT_EMAIL = os.environ.get('ADMIN_EMAIL', 'support@cavi.io')
+MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("cavi")
@@ -248,7 +250,7 @@ async def register(body: RegisterReq):
         "id": uid, "username": body.username, "email": email,
         "password": hash_password(body.password), "loginType": "email",
         "walletAddress": None, "role": "user", "roiAllowed": True,
-        "wdAllowed": True, "depositBase": 0.0,
+        "wdAllowed": True, "depositBase": 0.0, "depositCount": 0, "securityFlag": False,
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(dict(doc))
@@ -314,6 +316,7 @@ async def wallet_login(body: WalletVerifyReq):
             "id": uid, "username": username, "email": None, "password": None,
             "loginType": "wallet", "walletAddress": body.address, "role": "user",
             "roiAllowed": True, "wdAllowed": True, "depositBase": 0.0,
+            "depositCount": 0, "securityFlag": False,
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
         await db.users.insert_one(dict(user))
@@ -322,7 +325,9 @@ async def wallet_login(body: WalletVerifyReq):
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     fin = await user_financials(user["id"])
-    return {"user": public_user(user), "financials": fin}
+    remaining = max(0, MAX_DEPOSITS - user.get("depositCount", 0))
+    return {"user": public_user(user), "financials": fin,
+            "supportEmail": SUPPORT_EMAIL, "depositAttemptsRemaining": remaining}
 
 @api.patch("/auth/update-username")
 async def update_username(body: UpdateUsernameReq, user: dict = Depends(get_current_user)):
@@ -333,8 +338,22 @@ async def update_username(body: UpdateUsernameReq, user: dict = Depends(get_curr
 # ----------------------------------------------------------------------------
 # WALLET ROUTES
 # ----------------------------------------------------------------------------
+def deposit_roi_start_date() -> str:
+    """A deposit made 05:00-05:59 AM PKT activates for the SAME day's 6 AM cycle;
+    any other time activates at the NEXT day's 6 AM cycle. Returns PKT date ISO."""
+    pkt = now_pkt()
+    if pkt.hour == 5:
+        start = pkt.date()
+    else:
+        start = (pkt + timedelta(days=1)).date()
+    return start.isoformat()
+
 @api.post("/wallets")
 async def create_wallet(body: CreateWalletReq, user: dict = Depends(get_current_user)):
+    existing = await db.wallets.find_one({"userId": user["id"], "network": body.network})
+    if existing:
+        raise HTTPException(status_code=400,
+                            detail=f"You already have a {body.network} wallet. Only one wallet per network is allowed.")
     wallet_id = str(uuid.uuid4())
     wallet = {
         "id": wallet_id, "userId": user["id"], "network": body.network,
@@ -359,16 +378,51 @@ async def list_wallets(user: dict = Depends(get_current_user)):
 
 @api.post("/wallets/{wallet_id}/deposit")
 async def simulate_deposit(wallet_id: str, body: DepositReq, user: dict = Depends(get_current_user)):
+    if user.get("securityFlag"):
+        raise HTTPException(status_code=403,
+            detail=f"Your account is under security review and deposits are blocked. Please contact the admin at {SUPPORT_EMAIL}.")
     wallet = await db.wallets.find_one({"id": wallet_id, "userId": user["id"]})
     if not wallet:
         raise HTTPException(status_code=404, detail="Wallet not found")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    count = user.get("depositCount", 0)
+    if count >= MAX_DEPOSITS:
+        # 4th attempt: flag the user as a security threat
+        await db.users.update_one({"id": user["id"]}, {"$set": {
+            "securityFlag": True, "flaggedAt": datetime.now(timezone.utc).isoformat(),
+            "flagReason": f"Exceeded the allowed deposit attempts ({MAX_DEPOSITS})"}})
+        await write_audit("system", "security_flag", user["id"],
+                          f"User {user.get('username')} flagged: exceeded deposit attempts")
+        raise HTTPException(status_code=403,
+            detail=f"You have used all {MAX_DEPOSITS} deposit attempts. Your account has been flagged for review. Please contact the admin at {SUPPORT_EMAIL}.")
+
+    start_date = deposit_roi_start_date()
+    await db.deposits.insert_one({
+        "id": str(uuid.uuid4()), "userId": user["id"], "walletId": wallet_id,
+        "network": wallet["network"], "amount": body.amount,
+        "depositedAt": datetime.now(timezone.utc).isoformat(),
+        "roiStartDate": start_date, "status": "confirmed",
+    })
     await db.wallets.update_one({"id": wallet_id}, {"$inc": {"depositAmount": body.amount, "usdtBalance": body.amount}})
     # deposit base only ever increases
-    await db.users.update_one({"id": user["id"]}, {"$inc": {"depositBase": body.amount}})
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"depositBase": body.amount, "depositCount": 1}})
     fin = await user_financials(user["id"])
-    return {"financials": fin}
+    remaining = max(0, MAX_DEPOSITS - (count + 1))
+    return {"financials": fin, "roiStartDate": start_date, "attemptsRemaining": remaining}
+
+@api.get("/wallets/{wallet_id}/deposits")
+async def wallet_deposits(wallet_id: str, user: dict = Depends(get_current_user)):
+    wallet = await db.wallets.find_one({"id": wallet_id, "userId": user["id"]}, {"_id": 0})
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    deposits = await db.deposits.find({"walletId": wallet_id}, {"_id": 0}).sort("depositedAt", -1).to_list(200)
+    today = now_pkt().date().isoformat()
+    for d in deposits:
+        d["roiActive"] = d["roiStartDate"] <= today
+    return {"wallet": wallet, "deposits": deposits,
+            "total": round(sum(d["amount"] for d in deposits), 4)}
 
 # ----------------------------------------------------------------------------
 # ROI ROUTES
@@ -379,7 +433,7 @@ async def my_roi(user: dict = Depends(get_current_user)):
     if fin["depositBase"] <= 0:
         return {"hasDeposits": False, "depositBase": 0, "today": None, "history": [], "totalRoi": 0}
     history = await db.roi.find({"userId": user["id"]}, {"_id": 0}).sort("cycleDate", -1).to_list(60)
-    today_str = datetime.now(timezone.utc).date().isoformat()
+    today_str = now_pkt().date().isoformat()
     today = next((r for r in history if r.get("cycleDate") == today_str), None)
     return {
         "hasDeposits": True, "depositBase": fin["depositBase"],
@@ -518,6 +572,24 @@ async def admin_set_role(body: RoleReq, admin: dict = Depends(require_superadmin
     await write_audit(admin["id"], "set_role", target["id"], f"Set role={body.role} for {body.email}")
     return {"ok": True}
 
+@api.get("/admin/fraud")
+async def admin_fraud(admin: dict = Depends(require_admin)):
+    flagged = await db.users.find({"securityFlag": True}, {"_id": 0, "password": 0}).to_list(1000)
+    for u in flagged:
+        u["financials"] = await user_financials(u["id"])
+    return {"flagged": flagged}
+
+@api.patch("/admin/users/{user_id}/clear-flag")
+async def admin_clear_flag(user_id: str, admin: dict = Depends(require_admin)):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "securityFlag": False, "depositCount": 0, "flagReason": None}})
+    await write_audit(admin["id"], "clear_security_flag", user_id,
+                      f"Cleared security flag for {target.get('username')} (deposit attempts reset)")
+    return {"ok": True}
+
 @api.get("/admin/wallets")
 async def admin_wallets(admin: dict = Depends(require_admin)):
     wallets = await db.wallets.find({}, {"_id": 0}).sort("createdAt", -1).to_list(1000)
@@ -607,16 +679,25 @@ async def run_roi_cycle(manual: bool = False) -> int:
     if settings.get("globalRoiPaused"):
         logger.info("ROI cycle skipped: globally paused")
         return 0
-    cycle_date = datetime.now(timezone.utc).date().isoformat()
+    cycle_date = now_pkt().date().isoformat()  # PKT date (6 AM PKT cycle)
     generated = 0
     existing_rows = await db.roi.find({"cycleDate": cycle_date}, {"_id": 0, "userId": 1}).to_list(100000)
     already = {r["userId"] for r in existing_rows}
-    users = await db.users.find({"roiAllowed": True, "depositBase": {"$gt": 0}}, {"_id": 0}).to_list(100000)
+    # Eligible (activated) deposit base per user = deposits whose roiStartDate has arrived
+    active_base = {}
+    async for d in db.deposits.aggregate([
+        {"$match": {"roiStartDate": {"$lte": cycle_date}}},
+        {"$group": {"_id": "$userId", "t": {"$sum": "$amount"}}},
+    ]):
+        active_base[d["_id"]] = d["t"]
+    users = await db.users.find({"roiAllowed": True, "securityFlag": {"$ne": True}}, {"_id": 0}).to_list(100000)
     new_records = []
     for u in users:
         if u["id"] in already:
             continue
-        deposit_base = u.get("depositBase", 0)
+        deposit_base = round(active_base.get(u["id"], 0), 4)
+        if deposit_base <= 0:
+            continue
         rate = generate_roi_rate()
         amount = round(deposit_base * rate / 100.0, 4)
         new_records.append({
@@ -627,7 +708,7 @@ async def run_roi_cycle(manual: bool = False) -> int:
         generated += 1
     if new_records:
         await db.roi.insert_many(new_records)
-    logger.info(f"ROI cycle complete: {generated} records (manual={manual})")
+    logger.info(f"ROI cycle complete: {generated} records for {cycle_date} (manual={manual})")
     return generated
 
 async def roi_scheduler():

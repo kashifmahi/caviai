@@ -12,6 +12,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [financials, setFinancials] = useState(null);
+  const [meta, setMeta] = useState({ supportEmail: null, attemptsRemaining: 3 });
   const [loading, setLoading] = useState(true);
 
   const setSession = (data) => {
@@ -30,6 +31,7 @@ export function AuthProvider({ children }) {
       const { data } = await api.get("/auth/me");
       setUser(data.user);
       setFinancials(data.financials);
+      setMeta({ supportEmail: data.supportEmail, attemptsRemaining: data.depositAttemptsRemaining });
     } catch (e) {
       localStorage.removeItem("cavi_token");
       setUser(false);
@@ -87,7 +89,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, financials, loading, login, register, walletAuth, logout, refresh, updateUsername }}
+      value={{ user, financials, meta, loading, login, register, walletAuth, logout, refresh, updateUsername }}
     >
       {children}
     </AuthContext.Provider>

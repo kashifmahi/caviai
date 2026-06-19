@@ -1,0 +1,43 @@
+{
+  "summary": "Validated all NEW iteration-3 business rules end-to-end (backend + frontend). 7/7 new-rule pytest tests pass and full UI flow verified: one-wallet-per-network gating, deposit warning modal + 3-attempt limit + 4th=403 + securityFlag + flag-banner with admin email, deposit ledger modal with ROI activation date per deposit, admin Security tab listing flagged users with reason, clear-flag resetting attemptsRemaining back to 3, ROI cycle skipping not-yet-activated deposits (next-day activation rule for any deposit outside 05:00-05:59 PKT). Regression suite: 37/38 pass — the 1 failure is an OLD test (test_admin_run_cycle_then_user_roi) whose assumption (immediate ROI on same-day deposits) is invalidated by the NEW activation-date rule and needs updating.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/admin/roi/run-cycle (existing test)", "issue": "Old regression test test_admin_run_cycle_then_user_roi asserts totalRoi>0 after a same-day deposit + cycle, but new roiStartDate=next-day rule makes this invalid outside the 05:00-05:59 PKT window. Test needs updating, not the API."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cavi_new_rules.py",
+    "/app/backend/tests/test_cavi_backend.py",
+    "/app/test_reports/pytest/iter3_new_rules.xml",
+    "/app/test_reports/pytest/iter3_regression.xml"
+  ],
+  "action_items": [
+    "Update /app/backend/tests/test_cavi_backend.py::TestROI::test_admin_run_cycle_then_user_roi to account for next-day ROI activation (e.g., skip the totalRoi>0 assertion unless PKT hour==5, OR backdate a deposit's roiStartDate via fixture)."
+  ],
+  "critical_code_review_comments": [
+    "WalletsPage.js: after the 4th (flagging) deposit attempt, the input/button correctly become disabled and the flag-banner shows — confirmed via screenshot. Good UX.",
+    "AdminPanel.js Security tab loads /admin/fraud on tab change, but initial render before the response shows the empty state — minor UX quirk (could show a loading skeleton). Not blocking.",
+    "AdminPanel.js is now ~480+ lines covering 7 tabs + 2 modals; splitting into per-tab subcomponents would aid maintainability (carry-over from iter_2).",
+    "Both run-cycle and clear-flag responses don't include the affected user/record list — only {ok:true}; returning richer responses would help client cache reconciliation.",
+    "/api/wallets/{wallet_id}/deposits computes roiActive in Python loop — fine for now, but if deposits per wallet grow large, consider Mongo aggregation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cavi_new_rules.py (created — 7 new-rule tests)"
+  ],
+  "success_rate": {
+    "backend": "100% on new-rule suite (7/7); 97% on full regression (37/38, 1 stale test invalidated by new rule)",
+    "frontend": "100% (all targeted UI flows for wallet gating, deposit confirm + flagging, ledger modal, admin security tab + clear-flag verified end-to-end)"
+  },
+  "test_credentials": "Superadmin: superadmin@cavi.io / Cavi@Admin2025. Test users created at runtime with TEST_/flagtest_ prefix and pass1234.",
+  "seed_data_creation": "Created multiple TEST_ users via signup, several wallets (ETH, SOL), 3+ deposits each, and triggered 1-2 security flags then cleared one. Existing flagged user 'flagtest_1781901315150' remains in DB after this iteration.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All NEW iter-3 rules pass on backend (7/7) and frontend (E2E). The only failing test in the original regression suite is test_admin_run_cycle_then_user_roi which is now stale (asserts immediate ROI on same-day deposit, but the NEW rule sets roiStartDate=next-day for any deposit outside 05:00-05:59 PKT). To re-validate, the main agent should update that single test. Note that one flagged test user (flagtest_1781901315150) remains in DB and shows up in admin Security tab.",
+  "rca of the issue": "The 1 regression failure is NOT a code bug — it's a test that pre-dates the new ROI activation-date logic. Reproduction: run pytest test_cavi_backend.py::TestROI::test_admin_run_cycle_then_user_roi. Server returns roiStartDate as next day for deposits made outside 05:00-05:59 PKT, so run_roi_cycle filters them out via roiStartDate<=cycleDate. Mitigation: update the test to either backdate a deposit in MongoDB before running cycle, or skip the totalRoi>0 assertion when PKT hour != 5."
+}
