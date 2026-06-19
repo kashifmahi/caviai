@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatError } from "@/lib/api";
 import WalletButtons from "@/components/WalletButtons";
@@ -56,6 +56,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -91,11 +92,20 @@ export default function Login() {
           onChange={(e) => setEmail(e.target.value)}
           className="inp w-full rounded-sm px-4 py-3 text-sm" data-testid="login-email"
         />
-        <input
-          type="password" required placeholder="Password" value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="inp w-full rounded-sm px-4 py-3 text-sm" data-testid="login-password"
-        />
+        <div className="relative">
+          <input
+            type={showPw ? "text" : "password"} required placeholder="Password" value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="inp w-full rounded-sm px-4 py-3 pr-11 text-sm" data-testid="login-password"
+          />
+          <button
+            type="button" onClick={() => setShowPw((s) => !s)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+            data-testid="login-password-toggle" aria-label="Toggle password visibility"
+          >
+            {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
         <button type="submit" disabled={loading} className="btn-finance w-full rounded-sm py-3 flex items-center justify-center gap-2" data-testid="login-submit">
           {loading && <Loader2 className="w-4 h-4 animate-spin" />} Log in
         </button>

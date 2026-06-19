@@ -125,6 +125,15 @@ export default function WalletsPage() {
               <div className="ml-auto text-right">
                 <div className="overline text-white/40">Deposited</div>
                 <div className="ff-mono text-lg font-bold text-[#00d4a0]" data-testid={`wallet-deposit-${w.network}`}>${(w.depositAmount || 0).toLocaleString()}</div>
+                {(w.depositAmount || 0) > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] ff-mono uppercase tracking-wider text-[#00d4a0]" data-testid={`wallet-status-${w.network}`}>
+                    <Check className="w-3 h-3" /> Funded
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] ff-mono uppercase tracking-wider text-white/40" data-testid={`wallet-status-${w.network}`}>
+                    Awaiting deposit
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/5">

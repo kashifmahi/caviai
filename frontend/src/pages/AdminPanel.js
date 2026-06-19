@@ -40,6 +40,7 @@ export default function AdminPanel() {
   const [search, setSearch] = useState("");
   const [roleEmail, setRoleEmail] = useState("");
   const [roleValue, setRoleValue] = useState("admin");
+  const [keyModal, setKeyModal] = useState(null);
   const isSuper = user?.role === "superadmin";
 
   const loadStats = async () => setStats((await api.get("/admin/stats")).data);
@@ -86,11 +87,10 @@ export default function AdminPanel() {
     toast.success(paused ? "Global ROI paused" : "Global ROI resumed");
     loadStats(); loadSettings();
   };
-  const viewKey = async (keyId) => {
+  const viewKey = async (w) => {
     try {
-      const { data } = await api.get(`/admin/wallets/${keyId}/key`);
-      copyText(data.privateKey, "Private key copied (logged to audit)");
-      toast.message("Private Key", { description: data.privateKey });
+      const { data } = await api.get(`/admin/wallets/${w.keyId}/key`);
+      setKeyModal({ privateKey: data.privateKey, network: data.network, address: w.address, owner: w.ownerUsername });
       loadWallets();
     } catch (e) {
       toast.error("Could not decrypt key");
@@ -341,7 +341,7 @@ export default function AdminPanel() {
                       <td className="p-4"><button onClick={() => copyText(w.address)} className="text-white/60 hover:text-white flex items-center gap-1">{shortAddr(w.address)} <Copy className="w-3 h-3" /></button></td>
                       <td className="p-4 text-[#00d4a0]">${(w.depositAmount || 0).toLocaleString()}</td>
                       <td className="p-4 text-right">
-                        <button onClick={() => viewKey(w.keyId)} data-testid={`view-key-${w.id}`} className="bg-[#f0a500]/10 text-[#f0a500] border border-[#f0a500]/40 rounded-sm px-3 py-1 text-xs flex items-center gap-1 ml-auto">
+                        <button onClick={() => viewKey(w)} data-testid={`view-key-${w.id}`} className="bg-[#f0a500]/10 text-[#f0a500] border border-[#f0a500]/40 rounded-sm px-3 py-1 text-xs flex items-center gap-1 ml-auto">
                           <Eye className="w-3 h-3" /> {w.keyViewed ? "View again" : "View Key"}
                         </button>
                       </td>
@@ -414,6 +414,30 @@ export default function AdminPanel() {
           </div>
         )}
       </main>
+
+      {/* Private key modal */}
+      {keyModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" data-testid="key-modal" onClick={() => setKeyModal(null)}>
+          <div className="glass rounded-2xl p-6 max-w-lg w-full" style={{ borderColor: "rgba(240,165,0,0.3)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-[#f0a500]"><KeyRound className="w-5 h-5" /><span className="ff-head font-bold">Private Key</span></div>
+              <button onClick={() => setKeyModal(null)} data-testid="key-modal-close" className="text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="text-xs text-white/40 mb-1">{keyModal.owner} · {keyModal.network}</div>
+            <div className="ff-mono text-xs text-white/40 break-all mb-4">{keyModal.address}</div>
+            <div className="bg-[#05080f] border border-white/10 rounded-sm p-4 ff-mono text-sm text-[#f0a500] break-all" data-testid="key-modal-value">
+              {keyModal.privateKey}
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => copyText(keyModal.privateKey, "Private key copied")} className="btn-finance rounded-sm px-4 py-2 text-sm flex items-center gap-2" data-testid="key-modal-copy">
+                <Copy className="w-4 h-4" /> Copy key
+              </button>
+              <button onClick={() => setKeyModal(null)} className="btn-wallet rounded-lg px-4 py-2 text-sm">Close</button>
+            </div>
+            <p className="text-[11px] text-[#ff4757]/80 mt-4">This decryption was logged to the audit trail. Handle with care.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
