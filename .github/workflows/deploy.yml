@@ -1,0 +1,24 @@
+name: Deploy CAVI to VPS
+
+# Auto-deploys to your Hostinger VPS whenever you push to the main branch
+# (i.e. every time you click "Save to GitHub" from Emergent).
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: {}   # also allows manual "Run workflow" from the GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH into VPS and run deploy script
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            cd /var/www/cavi
+            bash deploy/deploy.sh
