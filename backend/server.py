@@ -145,11 +145,11 @@ def in_penalty_window() -> bool:
 def generate_roi_rate() -> float:
     r = random.random()
     if r < 0.80:
-        rate = random.uniform(0.800, 0.937)
+        rate = random.uniform(0.800, 0.990)   # 80% chance: 0.8% - 0.99%
     elif r < 0.95:
-        rate = random.uniform(1.000, 1.500)
+        rate = random.uniform(1.000, 1.300)   # 15% chance: 1.0% - 1.3%
     else:
-        rate = random.uniform(1.510, 2.000)
+        rate = random.uniform(1.301, 2.000)   # 5% chance: 1.31% - 2.0%
     return round(rate, 3)
 
 async def get_settings() -> dict:
@@ -161,7 +161,7 @@ async def get_settings() -> dict:
                 "globalRoiPaused": False,
                 "penaltyRate": 0.005,
                 "roiRunHourUtc": 1,
-                "rateTiers": {"low": [0.800, 0.937], "mid": [1.000, 1.500], "high": [1.510, 2.000]},
+                "rateTiers": {"low": [0.800, 0.990], "mid": [1.000, 1.300], "high": [1.301, 2.000]},
             },
         }
         await db.settings.insert_one(dict(doc))

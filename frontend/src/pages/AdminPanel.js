@@ -451,9 +451,9 @@ export default function AdminPanel() {
               <div className="glass rounded-xl p-6">
                 <div className="overline text-white/40 mb-2">Rate Tiers (hidden engine)</div>
                 <div className="ff-mono text-xs text-white/60 space-y-1 mt-2">
-                  <div>80% → 0.80–0.94%</div>
-                  <div>15% → 1.00–1.50%</div>
-                  <div>5% → 1.51–2.00%</div>
+                  <div>80% → 0.80–0.99%</div>
+                  <div>15% → 1.00–1.30%</div>
+                  <div>5% → 1.31–2.00%</div>
                 </div>
               </div>
             </div>

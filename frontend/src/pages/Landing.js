@@ -147,8 +147,9 @@ function Nav() {
 function ROICalculator() {
   const [amount, setAmount] = useState(5000);
   const [days, setDays] = useState(30);
-  const dailyRate = 0.0095;
-  const projected = useMemo(() => amount * dailyRate * days, [amount, days]);
+  const dailyRate = 0.0098;          // representative actual daily rate
+  const displayRate = dailyRate / 2; // calculator shows a conservative 50% estimate
+  const projected = useMemo(() => amount * displayRate * days, [amount, displayRate, days]);
 
   return (
     <div className="relative rounded-2xl p-[1px] overflow-hidden glow-pulse" id="calc" data-testid="roi-calculator">
@@ -182,6 +183,10 @@ function ROICalculator() {
         </div>
 
         <div className="border-t border-white/10 pt-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-white/50 text-sm">Shown daily rate</span>
+            <span className="ff-mono text-sm font-bold text-[#f0a500]">0.4% – 1.0%</span>
+          </div>
           <div className="flex justify-between items-center">
             <span className="text-white/50 text-sm">Projected returns</span>
             <motion.span key={projected} initial={{ y: 6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="ff-mono text-3xl font-bold text-[#00d4a0]" data-testid="calc-projected">
@@ -189,7 +194,8 @@ function ROICalculator() {
             </motion.span>
           </div>
           <p className="text-[11px] text-white/30 mt-3 leading-relaxed">
-            Returns are calculated on your deposit base only and never compound. Daily rates vary and are illustrative.
+            Returns are calculated on your deposit base only and never compound. Figures shown are a
+            conservative estimate (50% of typical daily returns); actual rates vary.
           </p>
         </div>
       </div>
@@ -271,7 +277,7 @@ export default function Landing() {
             </motion.div>
             <motion.div variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} className="grid grid-cols-3 gap-6 mt-12 max-w-lg">
               {[
-                { k: "Daily Returns", v: <CountUp end={2.0} decimals={1} suffix="%" />, c: "#00d4a0" },
+                { k: "Daily Returns", v: <span>0.8–2%</span>, c: "#00d4a0" },
                 { k: "Networks", v: <CountUp end={4} suffix="" />, c: "#6c63ff" },
                 { k: "Paid Out", v: <CountUp end={4.2} decimals={1} prefix="$" suffix="M" />, c: "#f0a500" },
               ].map((s) => (
