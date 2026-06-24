@@ -1,0 +1,21 @@
+# systemd service for the CAVI FastAPI backend
+# -> /etc/systemd/system/cavi-backend.service
+# Runs a single uvicorn process (the in-app daily ROI scheduler needs one process).
+
+[Unit]
+Description=CAVI FastAPI backend
+After=network.target mongod.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/cavi/backend
+# Load environment variables from the backend .env file
+EnvironmentFile=/var/www/cavi/backend/.env
+ExecStart=/var/www/cavi/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001 --workers 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
