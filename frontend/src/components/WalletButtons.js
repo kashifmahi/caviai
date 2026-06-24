@@ -3,13 +3,25 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { formatError } from "@/lib/api";
 
 const WALLETS = [
-  { id: "metamask", name: "MetaMask", chain: "evm", rdns: "metamask", color: "#f6851b", glyph: "🦊" },
-  { id: "phantom", name: "Phantom", chain: "solana", rdns: null, color: "#ab9ff2", glyph: "👻" },
-  { id: "coinbase", name: "Coinbase Wallet", chain: "evm", rdns: "coinbase", color: "#0052ff", glyph: "🔵" },
-  { id: "walletconnect", name: "WalletConnect", chain: "evm", rdns: "walletconnect", color: "#3b99fc", glyph: "🔗" },
+  { id: "metamask", name: "MetaMask", chain: "evm", rdns: "metamask", glyph: "🦊" },
+  { id: "phantom", name: "Phantom", chain: "solana", rdns: null, glyph: "👻" },
+  { id: "trust", name: "Trust Wallet", chain: "evm", rdns: "trust", glyph: "🛡️" },
+  { id: "coinbase", name: "Coinbase Wallet", chain: "evm", rdns: "coinbase", glyph: "🔵" },
 ];
+
+function readableError(e, walletName) {
+  const detail = e?.response?.data?.detail;
+  if (detail) return formatError(detail);
+  // wallet provider rejection codes
+  if (e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || "")) {
+    return "Request cancelled in your wallet.";
+  }
+  if (typeof e?.message === "string" && e.message) return e.message;
+  return `Could not connect ${walletName}. Please try again.`;
+}
 
 export default function WalletButtons() {
   const { walletAuth } = useAuth();
@@ -23,7 +35,8 @@ export default function WalletButtons() {
       toast.success(`Connected with ${w.name}`);
       navigate("/app");
     } catch (e) {
-      toast.error(e.message || `Could not connect ${w.name}`);
+      console.error(`[wallet:${w.id}]`, e);
+      toast.error(readableError(e, w.name));
     } finally {
       setBusy(null);
     }

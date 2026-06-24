@@ -69,16 +69,21 @@ export async function connectEvm(rdnsHint) {
   const providers = await detectEvmProviders();
   let provider = null;
   if (providers.length) {
-    if (rdnsHint) {
-      const match = providers.find((p) => (p.info.rdns || "").toLowerCase().includes(rdnsHint));
-      provider = match ? match.provider : providers[0].provider;
-    } else {
-      provider = providers[0].provider;
-    }
+    const byRdns = rdnsHint && providers.find((p) => (p.info.rdns || "").toLowerCase().includes(rdnsHint));
+    const byName = rdnsHint && providers.find((p) => (p.info.name || "").toLowerCase().includes(rdnsHint));
+    provider = (byRdns || byName || providers[0]).provider;
   } else if (window.ethereum) {
-    provider = window.ethereum;
+    const eth = window.ethereum;
+    const flagMap = { metamask: "isMetaMask", coinbase: "isCoinbaseWallet", trust: "isTrust" };
+    const flag = flagMap[rdnsHint];
+    if (Array.isArray(eth.providers) && eth.providers.length) {
+      provider = (flag && eth.providers.find((p) => p[flag])) || eth.providers[0];
+    } else {
+      provider = eth;
+    }
   }
-  if (!provider) throw new Error("No EVM wallet detected. Install MetaMask or Coinbase Wallet.");
+  if (!provider)
+    throw new Error("No EVM wallet detected. Please install MetaMask, Trust Wallet, or Coinbase Wallet.");
   const accounts = await provider.request({ method: "eth_requestAccounts" });
   if (!accounts || !accounts.length) throw new Error("No account returned by wallet");
   return { address: accounts[0], provider };

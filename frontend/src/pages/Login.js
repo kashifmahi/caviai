@@ -5,6 +5,7 @@ import { Loader2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatError } from "@/lib/api";
 import WalletButtons from "@/components/WalletButtons";
+import { LogoMark } from "@/components/Logo";
 
 const ABSTRACT =
   "https://images.pexels.com/photos/26559580/pexels-photo-26559580.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
@@ -23,7 +24,7 @@ export function AuthShell({ children, title, subtitle }) {
         />
         <div className="relative h-full flex flex-col justify-between p-12">
           <Link to="/" className="flex items-center gap-2 w-fit" data-testid="auth-logo">
-            <div className="w-9 h-9 rounded-lg bg-[#6c63ff]/15 border border-[#6c63ff]/40 flex items-center justify-center ff-head font-black text-[#6c63ff]">C</div>
+            <LogoMark size={36} />
             <span className="ff-head font-bold text-lg">CAVI</span>
           </Link>
           <div className="glass rounded-2xl p-8 max-w-md">

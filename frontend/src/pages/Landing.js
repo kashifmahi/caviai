@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useInView } from "framer-motion";
 import { ArrowRight, ShieldCheck, Zap, TrendingUp, Lock, Menu, X, Sparkles, Activity } from "lucide-react";
 import PriceTicker from "@/components/PriceTicker";
 import { NetworkBadge, netLabel } from "@/components/shared";
+import { LogoMark } from "@/components/Logo";
 
 const HERO_BG =
   "https://images.pexels.com/photos/13156181/pexels-photo-13156181.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
@@ -114,7 +115,7 @@ function Nav() {
     <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${scrolled ? "bg-[#05080f]/80 backdrop-blur-xl border-b border-white/5" : ""}`}>
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2" data-testid="logo">
-          <div className="w-9 h-9 rounded-lg bg-[#6c63ff]/15 border border-[#6c63ff]/40 flex items-center justify-center ff-head font-black text-[#6c63ff]">C</div>
+          <LogoMark size={36} />
           <span className="ff-head font-bold text-lg tracking-tight">CAVI</span>
         </Link>
         <nav className="hidden md:flex items-center gap-8 text-sm text-white/60">
@@ -202,8 +203,8 @@ function NetworkOrbit() {
     <div className="relative w-full aspect-square max-w-[340px] mx-auto" data-testid="network-orbit">
       <div className="absolute inset-0 rounded-full border border-white/5" />
       <div className="absolute inset-[18%] rounded-full border border-white/5" />
-      <div className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-2xl glass flex items-center justify-center ff-head font-black text-2xl text-[#6c63ff] glow-purple">
-        CAVI
+      <div className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-2xl glass flex items-center justify-center glow-purple">
+        <LogoMark size={46} />
       </div>
       <div className="absolute inset-0 orbit">
         {NETWORKS.map((n, i) => {

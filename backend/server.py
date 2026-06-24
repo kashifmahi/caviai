@@ -285,7 +285,10 @@ async def wallet_login(body: WalletVerifyReq):
         {"address": body.address, "chain": body.chain, "message": body.message, "consumed": False})
     if not nonce_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired challenge")
-    if nonce_doc["expiresAt"] < datetime.now(timezone.utc):
+    expires_at = nonce_doc["expiresAt"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Challenge expired")
 
     ok = False

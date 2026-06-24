@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
 import { LayoutDashboard, Wallet, TrendingUp, ArrowUpFromLine, Shield, LogOut, Menu, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { shortAddr } from "@/components/shared";
+import { LogoMark } from "@/components/Logo";
 
 const LINKS = [
   { to: "/app", label: "Overview", icon: LayoutDashboard, end: true, testId: "nav-overview" },
@@ -20,7 +21,7 @@ export default function DashboardLayout() {
   const SidebarContent = () => (
     <>
       <Link to="/" className="flex items-center gap-2 px-2 mb-8" data-testid="dash-logo">
-        <div className="w-9 h-9 rounded-lg bg-[#6c63ff]/15 border border-[#6c63ff]/40 flex items-center justify-center ff-head font-black text-[#6c63ff]">C</div>
+        <LogoMark size={34} />
         <span className="ff-head font-bold text-lg">CAVI</span>
       </Link>
       <nav className="space-y-1 flex-1">

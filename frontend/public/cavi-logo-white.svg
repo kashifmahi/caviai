@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-99 10 871 219"><defs>
+  <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#6D5BF0"/><stop offset="58%" stop-color="#9A7CFF"/><stop offset="100%" stop-color="#27E0BE"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#F0FFFB"/><stop offset="42%" stop-color="#27E0BE"/><stop offset="100%" stop-color="#27E0BE" stop-opacity="0"/>
+  </radialGradient>
+</defs><g><path d="M 46.84 182.02 A 70.00 70.00 0 1 1 46.84 77.98" fill="none" stroke="url(#g1)" stroke-width="26.00" stroke-linecap="round"/>
+<circle cx="21.00" cy="130.00" r="27.30" fill="url(#glow)"/>
+<circle cx="21.00" cy="130.00" r="10.92" fill="#EAFFF9"/>
+<circle cx="21.00" cy="130.00" r="10.92" fill="url(#g1)" fill-opacity="0.55"/></g><g transform="translate(255,0)"><path d="M 96.94 177.28 A 60.0 60.0 0 1 1 96.94 82.72" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round"/>
+<path d="M 288.00 130.00 A 60.0 60.0 0 1 0 168.00 130.00 A 60.0 60.0 0 1 0 288.00 130.00 Z" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round"/>
+<path d="M 288.00 70.00 L 288.00 190.00" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round"/>
+<path d="M 336.00 70.00 L 388.00 190.00 L 440.00 70.00" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 488.00 70.00 L 488.00 190.00" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round"/>
+<circle cx="488.00" cy="38.00" r="12.0" fill="#27E0BE"/></g></svg>
