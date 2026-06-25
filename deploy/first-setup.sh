@@ -9,14 +9,20 @@
 # =============================================================================
 set -euo pipefail
 
-# ----------------------- EDIT THESE -----------------------
-DOMAIN="yourdomain.com"                       # your domain (without https://)
-REPO_URL="https://github.com/USER/REPO.git"   # your GitHub repo URL
-ADMIN_EMAIL="admin@yourdomain.com"            # superadmin login email
-ADMIN_PASSWORD="ChangeThisStrongPassword"     # superadmin login password
-SUPPORT_EMAIL="support@cavi.solutions"        # shown to flagged users to contact
-LETSENCRYPT_EMAIL="you@email.com"             # for SSL renewal notices
-# ----------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ---- Load your settings from deploy/config.env (untracked, never conflicts) ----
+if [ ! -f "${SCRIPT_DIR}/config.env" ]; then
+  cp "${SCRIPT_DIR}/config.env.example" "${SCRIPT_DIR}/config.env"
+  echo ""
+  echo ">> Created ${SCRIPT_DIR}/config.env"
+  echo ">> Edit it with your values, then run this script again:"
+  echo "       nano ${SCRIPT_DIR}/config.env"
+  echo "       bash ${SCRIPT_DIR}/first-setup.sh"
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "${SCRIPT_DIR}/config.env"
 
 APP_DIR="/var/www/cavi"
 
