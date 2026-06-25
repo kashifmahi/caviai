@@ -14,6 +14,7 @@ DOMAIN="yourdomain.com"                       # your domain (without https://)
 REPO_URL="https://github.com/USER/REPO.git"   # your GitHub repo URL
 ADMIN_EMAIL="admin@yourdomain.com"            # superadmin login email
 ADMIN_PASSWORD="ChangeThisStrongPassword"     # superadmin login password
+SUPPORT_EMAIL="support@cavi.solutions"        # shown to flagged users to contact
 LETSENCRYPT_EMAIL="you@email.com"             # for SSL renewal notices
 # ----------------------------------------------------------
 
@@ -52,6 +53,7 @@ JWT_SECRET="${JWT_SECRET}"
 ENCRYPTION_KEY="${ENC_KEY}"
 ADMIN_EMAIL="${ADMIN_EMAIL}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD}"
+SUPPORT_EMAIL="${SUPPORT_EMAIL}"
 EOF
 echo "    -> backend/.env created. KEEP ENCRYPTION_KEY SAFE & NEVER CHANGE IT."
 

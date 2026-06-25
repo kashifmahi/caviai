@@ -37,7 +37,7 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 ENCRYPTION_KEY = bytes.fromhex(os.environ['ENCRYPTION_KEY'])  # 32 bytes -> AES-256
-SUPPORT_EMAIL = os.environ.get('ADMIN_EMAIL', 'support@cavi.io')
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@cavi.solutions')
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

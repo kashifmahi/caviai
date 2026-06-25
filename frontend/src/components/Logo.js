@@ -15,6 +15,18 @@ export function LogoMark({ size = 36, className = "" }) {
   );
 }
 
+export function LogoWordmark({ height = 26, className = "" }) {
+  return (
+    <img
+      src="/cavi-logo-white.svg"
+      alt="CAVI"
+      style={{ height, width: "auto", display: "block" }}
+      className={className}
+      draggable={false}
+    />
+  );
+}
+
 export function Logo({ size = 34, showWordmark = true, className = "" }) {
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
