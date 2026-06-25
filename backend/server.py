@@ -39,6 +39,7 @@ JWT_ALGORITHM = "HS256"
 ENCRYPTION_KEY = bytes.fromhex(os.environ['ENCRYPTION_KEY'])  # 32 bytes -> AES-256
 SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@cavi.solutions')
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
+MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("cavi")
@@ -162,10 +163,29 @@ async def get_settings() -> dict:
                 "penaltyRate": 0.005,
                 "roiRunHourUtc": 1,
                 "rateTiers": {"low": [0.800, 0.990], "mid": [1.000, 1.300], "high": [1.301, 2.000]},
+                "displayTotalDeposit": None,
             },
         }
         await db.settings.insert_one(dict(doc))
     return doc["value"]
+
+async def compute_public_stats() -> dict:
+    """Landing-page platform stats. Capped at MAX_DISPLAY_DEPOSIT. ROI paid is always
+    a fraction of deposits (never exceeds it). Wallets derive from deposits. If an admin
+    sets displayTotalDeposit, everything derives from that; otherwise it rotates daily."""
+    settings = await get_settings()
+    override = settings.get("displayTotalDeposit")
+    day = int(datetime.now(timezone.utc).timestamp() // 86400)
+    rng = random.Random(day)  # deterministic per day; does NOT touch global RNG used for ROI
+    if override is not None:
+        deposited = min(float(override), MAX_DISPLAY_DEPOSIT)
+        roi_paid = round(deposited * 0.34, 2)
+        wallets = int(deposited / 400) if deposited > 0 else 0
+    else:
+        deposited = round(min(3_600_000 + rng.random() * 600_000, MAX_DISPLAY_DEPOSIT), 2)
+        roi_paid = round(deposited * (0.30 + rng.random() * 0.08), 2)  # 30-38%, always < deposit
+        wallets = int(deposited / (360 + rng.random() * 120))
+    return {"deposited": deposited, "roiPaid": roi_paid, "wallets": wallets, "max": MAX_DISPLAY_DEPOSIT}
 
 # ----------------------------------------------------------------------------
 # Pydantic request models
@@ -219,6 +239,9 @@ class WithdrawalActionReq(BaseModel):
 
 class GlobalRoiReq(BaseModel):
     paused: bool
+
+class LandingStatsReq(BaseModel):
+    totalDeposit: float | None = None  # None => auto (daily rotating)
 
 # ----------------------------------------------------------------------------
 # Helpers to assemble user financials
@@ -512,6 +535,10 @@ async def prices():
 # ----------------------------------------------------------------------------
 # ADMIN ROUTES
 # ----------------------------------------------------------------------------
+@api.get("/stats/public")
+async def stats_public():
+    return await compute_public_stats()
+
 @api.get("/admin/stats")
 async def admin_stats(admin: dict = Depends(require_admin)):
     total_users = await db.users.count_documents({})
@@ -662,6 +689,19 @@ async def admin_global_roi(body: GlobalRoiReq, admin: dict = Depends(require_adm
 @api.get("/admin/settings")
 async def admin_get_settings(admin: dict = Depends(require_admin)):
     return {"settings": await get_settings()}
+
+@api.patch("/admin/settings/landing-stats")
+async def admin_landing_stats(body: LandingStatsReq, admin: dict = Depends(require_admin)):
+    settings = await get_settings()
+    if body.totalDeposit is None:
+        val = None
+    else:
+        val = max(0.0, min(float(body.totalDeposit), MAX_DISPLAY_DEPOSIT))
+    settings["displayTotalDeposit"] = val
+    await db.settings.update_one({"key": "global"}, {"$set": {"value": settings}})
+    await write_audit(admin["id"], "set_landing_deposit", "system",
+                      f"Landing total deposit display set to {'AUTO' if val is None else val}")
+    return {"ok": True, "stats": await compute_public_stats()}
 
 @api.get("/admin/audit")
 async def admin_audit(admin: dict = Depends(require_admin)):

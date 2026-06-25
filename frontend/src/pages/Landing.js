@@ -5,6 +5,7 @@ import { ArrowRight, ShieldCheck, Zap, TrendingUp, Lock, Menu, X, Sparkles, Acti
 import PriceTicker from "@/components/PriceTicker";
 import { NetworkBadge, netLabel } from "@/components/shared";
 import { LogoMark, LogoWordmark } from "@/components/Logo";
+import api from "@/lib/api";
 
 const HERO_BG =
   "https://images.pexels.com/photos/13156181/pexels-photo-13156181.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
@@ -103,21 +104,7 @@ function Reveal({ children, delay = 0, className = "" }) {
   );
 }
 
-/* ---------- Stats that change every day (deterministic per day, trending up) ---------- */
-function useDailyStats() {
-  return useMemo(() => {
-    const day = Math.floor(Date.now() / 86400000); // days since epoch
-    const rand = (s) => {
-      const x = Math.sin(s * 999.13) * 10000;
-      return x - Math.floor(x); // 0..1
-    };
-    const deposited = 312000 + day * 2150 + Math.floor(rand(day) * 48000);
-    const roiPaid = Math.floor(deposited * (0.31 + rand(day + 7) * 0.07));
-    const wallets = 9100 + Math.floor(day * 6) + Math.floor(rand(day + 13) * 700);
-    return { deposited, roiPaid, wallets };
-  }, []);
-}
-
+/* ---------- (landing platform stats are fetched from the backend) ---------- */
 function Nav() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -248,7 +235,10 @@ function NetworkOrbit() {
 
 export default function Landing() {
   const heroRef = useRef(null);
-  const dstats = useDailyStats();
+  const [dstats, setDstats] = useState({ deposited: 3900000, roiPaid: 1326000, wallets: 9800 });
+  useEffect(() => {
+    api.get("/stats/public").then(({ data }) => setDstats(data)).catch(() => {});
+  }, []);
   const onMove = (e) => {
     const el = heroRef.current;
     if (!el) return;

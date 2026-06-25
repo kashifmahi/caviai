@@ -43,6 +43,7 @@ export default function AdminPanel() {
   const [roleValue, setRoleValue] = useState("admin");
   const [keyModal, setKeyModal] = useState(null);
   const [fraud, setFraud] = useState([]);
+  const [landingDep, setLandingDep] = useState("");
   const isSuper = user?.role === "superadmin";
 
   const loadStats = async () => setStats((await api.get("/admin/stats")).data);
@@ -50,7 +51,11 @@ export default function AdminPanel() {
   const loadWithdrawals = async () => setWithdrawals((await api.get("/admin/withdrawals")).data.withdrawals);
   const loadWallets = async () => setWallets((await api.get("/admin/wallets")).data.wallets);
   const loadAudit = async () => setAudit((await api.get("/admin/audit")).data.audit);
-  const loadSettings = async () => setSettings((await api.get("/admin/settings")).data.settings);
+  const loadSettings = async () => {
+    const s = (await api.get("/admin/settings")).data.settings;
+    setSettings(s);
+    setLandingDep(s.displayTotalDeposit != null ? String(s.displayTotalDeposit) : "");
+  };
   const loadFraud = async () => setFraud((await api.get("/admin/fraud")).data.flagged);
 
   useEffect(() => {
@@ -104,6 +109,11 @@ export default function AdminPanel() {
     await api.patch(`/admin/users/${u.id}/clear-flag`);
     toast.success(`${u.username} cleared — deposit attempts reset`);
     loadFraud();
+  };
+  const saveLandingDeposit = async (val) => {
+    await api.patch("/admin/settings/landing-stats", { totalDeposit: val });
+    toast.success(val === null ? "Landing stats set to AUTO" : `Landing total deposit set to $${Number(val).toLocaleString()}`);
+    loadSettings();
   };
   const setRole = async () => {    try {
       await api.patch("/admin/users/role", { email: roleEmail, role: roleValue });
@@ -430,6 +440,30 @@ export default function AdminPanel() {
         {tab === "settings" && settings && (
           <div data-testid="admin-settings">
             <h1 className="ff-head text-2xl font-bold mb-6">Settings</h1>
+
+            {/* Landing total deposit control */}
+            <div className="glass rounded-xl p-6 mb-4" data-testid="landing-stats-control">
+              <div className="overline text-white/40 mb-2">Homepage Total Deposit (display)</div>
+              <p className="text-white/50 text-xs mb-4 max-w-2xl">
+                Set the public homepage "Total deposited" figure. <span className="text-white">ROI paid out</span> (≈34%)
+                and <span className="text-white">active wallets</span> auto-derive from it. Maximum <span className="text-white">$4.2M</span>.
+                Leave on <span className="text-white">Auto</span> for daily-rotating numbers (also capped at $4.2M).
+              </p>
+              <div className="flex gap-2 flex-wrap items-center">
+                <input
+                  type="number" value={landingDep}
+                  onChange={(e) => setLandingDep(e.target.value)}
+                  placeholder="e.g. 2000000"
+                  className="inp rounded-sm px-3 py-2 text-sm w-48" data-testid="landing-deposit-input"
+                />
+                <button onClick={() => saveLandingDeposit(Math.min(Number(landingDep) || 0, 4200000))} className="btn-finance rounded-sm px-5 py-2 text-sm" data-testid="set-landing-deposit">Set</button>
+                <button onClick={() => saveLandingDeposit(null)} className="btn-wallet rounded-lg px-5 py-2 text-sm" data-testid="auto-landing-deposit">Reset to Auto</button>
+                <span className="ff-mono text-xs text-white/40 ml-auto">
+                  Current: {settings.displayTotalDeposit == null ? "Auto (daily)" : `$${Number(settings.displayTotalDeposit).toLocaleString()}`}
+                </span>
+              </div>
+            </div>
+
             <div className="grid md:grid-cols-2 gap-4">
               <div className="glass rounded-xl p-6">
                 <div className="overline text-white/40 mb-2">Global ROI</div>
