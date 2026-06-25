@@ -103,6 +103,21 @@ function Reveal({ children, delay = 0, className = "" }) {
   );
 }
 
+/* ---------- Stats that change every day (deterministic per day, trending up) ---------- */
+function useDailyStats() {
+  return useMemo(() => {
+    const day = Math.floor(Date.now() / 86400000); // days since epoch
+    const rand = (s) => {
+      const x = Math.sin(s * 999.13) * 10000;
+      return x - Math.floor(x); // 0..1
+    };
+    const deposited = 312000 + day * 2150 + Math.floor(rand(day) * 48000);
+    const roiPaid = Math.floor(deposited * (0.31 + rand(day + 7) * 0.07));
+    const wallets = 9100 + Math.floor(day * 6) + Math.floor(rand(day + 13) * 700);
+    return { deposited, roiPaid, wallets };
+  }, []);
+}
+
 function Nav() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -233,6 +248,7 @@ function NetworkOrbit() {
 
 export default function Landing() {
   const heroRef = useRef(null);
+  const dstats = useDailyStats();
   const onMove = (e) => {
     const el = heroRef.current;
     if (!el) return;
@@ -326,9 +342,9 @@ export default function Landing() {
         <Reveal>
           <div className="max-w-6xl mx-auto glass rounded-2xl px-8 py-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {[
-              { v: <CountUp end={128450} prefix="$" />, k: "Total deposited", c: "#6c63ff" },
-              { v: <CountUp end={42900} prefix="$" />, k: "ROI paid out", c: "#00d4a0" },
-              { v: <CountUp end={9300} suffix="+" />, k: "Active wallets", c: "#f0a500" },
+              { v: <CountUp end={dstats.deposited} prefix="$" />, k: "Total deposited", c: "#6c63ff" },
+              { v: <CountUp end={dstats.roiPaid} prefix="$" />, k: "ROI paid out", c: "#00d4a0" },
+              { v: <CountUp end={dstats.wallets} suffix="+" />, k: "Active wallets", c: "#f0a500" },
               { v: <CountUp end={99.9} decimals={1} suffix="%" />, k: "Uptime", c: "#fff" },
             ].map((s) => (
               <div key={s.k}>
@@ -386,7 +402,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-white/30 text-sm">
           <LogoWordmark height={26} />
           <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> All systems operational</span>
-          <span>© {new Date().getFullYear()} CAVI. For demonstration purposes.</span>
+          <span>© {new Date().getFullYear()} CAVI</span>
         </div>
       </footer>
     </div>
