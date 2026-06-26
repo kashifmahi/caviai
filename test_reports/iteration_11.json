@@ -1,0 +1,41 @@
+{
+  "summary": "Tested CAVI single-level referral feature end-to-end (backend + frontend). 10/10 backend pytest cases pass (overview, register-stores-code, claim math = 10% of past-month ROI, idempotent claim, balance gating when referee balance<=0, separate referral pocket withdrawal not affecting main balance, insufficient-balance error). Frontend Playwright run also passes: signup?ref banner + localStorage capture, Overview referral card with copy/details, nav-referrals link, /app/referrals page with link/copy/share/4 stat cards/claim+withdraw toggles. No critical bugs found. Used /api/auth/me.financials.balance (not user.financials) — corrected in test; reflects backend response shape.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/referrals/withdraw", "issue": "Withdrawals are created with status='pending' and counted toward referral 'pendingWithdraw' immediately, reducing claimable referral balance. Behavior is correct, but admin-approval flow for source='referral' withdrawals was not exercised here — verify the admin withdrawal-list/approval UI properly handles source='referral' rows and that approved/rejected referral withdrawals update referral balance correctly."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/app/referrals", "issues": ["When balance=0, both 'Claim $0' and 'Withdraw earnings' buttons are disabled with reduced opacity — looks fine but tooltip/explanation (e.g. 'Available once a month closes') would aid UX."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_referrals.py",
+    "/app/test_reports/pytest/iter11_referrals.xml"
+  ],
+  "action_items": [
+    "(Optional) Add backend test/verification that admin approve/reject for source='referral' withdrawals updates referral pocket correctly.",
+    "(Optional polish) Add a small hint near disabled Claim/Withdraw buttons explaining when they unlock."
+  ],
+  "critical_code_review_comments": [
+    "referral_balance subtracts pending referral withdrawals from balance — good (prevents double-spend) but ensure rejected admin withdrawals restore the referral balance (i.e. status flips back to non-pending). Confirm admin reject path doesn't strand 'pending' rows.",
+    "resolve_referrer_id uppercases the input code (.strip().upper()) but the User schema stores codes uppercase via gen_referral_code (token_hex().upper()) — case mismatch protection is good.",
+    "Backend correctly excludes source='referral' withdrawals from user_financials and admin_users main-balance calculation (lines ~500, 1268).",
+    "REFERRAL_RATE = 0.10 is hard-coded; consider env-driven for future tuning. Acceptable for MVP.",
+    "referral_overview() iterates referees and does N+1 user_financials + monthly-roi aggregations. Will not scale beyond a few thousand referees per user; acceptable now."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_referrals.py"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (key flows)"},
+  "test_credentials": "Existing /app/memory/test_credentials.md (hajraanwar157@gmail.com / NewCavi@2026, superadmin@cavi.io / Cavi@Admin2025) — used test user; superadmin not needed for this feature.",
+  "seed_data_creation": "Seeded directly in Mongo via test fixtures: 2 test referee users (id prefix 'test-referee-'), past-month roi rows (2025-10 totaling 150, 2025-09 totaling 80), and a draining approved withdrawal. All seeded rows removed in fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend referral feature is solid. If feature changes again, re-run /app/backend/tests/test_referrals.py. Note PAST_MONTH must remain < current PKT month (currently Jan 2026). The test uses /api/auth/me JSON shape {user, financials} (financials is top-level, not nested). Withdrawals created by /api/referrals/withdraw enter as status='pending' source='referral'; pending referral withdrawals immediately reduce the referral pocket balance but never touch main balance.",
+  "rca of the issue": "N/A — no bugs found. Two initial test failures were test-side issues (case-sensitivity on pending_registrations email lookup; wrong nesting of /api/auth/me response payload). Both fixed in the test file."
+}

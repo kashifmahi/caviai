@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
-import { LayoutDashboard, Wallet, TrendingUp, ArrowUpFromLine, Shield, LogOut, Menu, X, Settings } from "lucide-react";
+import { LayoutDashboard, Wallet, TrendingUp, ArrowUpFromLine, Shield, LogOut, Menu, X, Settings, Gift } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { shortAddr, Avatar } from "@/components/shared";
 import { LogoMark } from "@/components/Logo";
@@ -10,6 +10,7 @@ const LINKS = [
   { to: "/app/wallets", label: "Wallets", icon: Wallet, testId: "nav-wallets" },
   { to: "/app/roi", label: "ROI", icon: TrendingUp, testId: "nav-roi" },
   { to: "/app/withdrawals", label: "Withdrawals", icon: ArrowUpFromLine, testId: "nav-withdrawals" },
+  { to: "/app/referrals", label: "Referrals", icon: Gift, testId: "nav-referrals" },
   { to: "/app/settings", label: "Settings", icon: Settings, testId: "nav-settings" },
 ];
 

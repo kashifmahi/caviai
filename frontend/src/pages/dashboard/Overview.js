@@ -5,9 +5,10 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell,
 } from "recharts";
-import { Wallet, TrendingUp, ArrowUpFromLine, Coins, ArrowRight, PieChart as PieIcon } from "lucide-react";
+import { Wallet, TrendingUp, ArrowUpFromLine, Coins, ArrowRight, PieChart as PieIcon, Gift, Copy } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { copyText } from "@/components/shared";
 
 const NET_COLOR = { ETH: "#627EEA", ETHEREUM: "#627EEA", SOL: "#14F195", SOLANA: "#14F195", BNB: "#F3BA2F", TRC20: "#FF4D67", TRON: "#FF4D67" };
 
@@ -41,11 +42,13 @@ export default function Overview() {
   const { user, financials, refresh } = useAuth();
   const [roi, setRoi] = useState(null);
   const [wallets, setWallets] = useState([]);
+  const [referral, setReferral] = useState(null);
 
   useEffect(() => {
     refresh();
     api.get("/roi").then(({ data }) => setRoi(data)).catch(() => {});
     api.get("/wallets").then(({ data }) => setWallets(Array.isArray(data) ? data : data?.wallets || [])).catch(() => {});
+    api.get("/referrals").then(({ data }) => setReferral(data)).catch(() => {});
   }, []); // eslint-disable-line
 
   const fin = financials || { depositBase: 0, roiEarned: 0, withdrawn: 0, balance: 0 };
@@ -143,6 +146,30 @@ export default function Overview() {
           )}
         </motion.div>
       </div>
+
+      {/* Referral invite */}
+      {referral && (
+        <motion.div className="glass rounded-2xl p-6 mb-6 flex flex-col md:flex-row md:items-center gap-4 border border-[#00d4a0]/20" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.22 }} data-testid="overview-referral-card">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#00d4a0]/15 flex items-center justify-center shrink-0">
+              <Gift className="w-5 h-5 text-[#00d4a0]" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="ff-head font-bold">Invite & earn {Math.round((referral.rate || 0.1) * 100)}%</h3>
+              <p className="text-white/50 text-sm truncate">Earn monthly on every friend who stakes. <span className="ff-mono text-white/70">{referral.referralLink}</span></p>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => copyText(referral.referralLink, "Referral link copied")}
+              className="btn-finance rounded-sm px-4 py-2.5 flex items-center gap-2 text-sm" data-testid="overview-referral-copy">
+              <Copy className="w-4 h-4" /> Copy link
+            </button>
+            <Link to="/app/referrals" className="rounded-sm px-4 py-2.5 flex items-center gap-2 text-sm border border-white/10 hover:bg-white/5 transition-colors" data-testid="overview-referral-open">
+              Details <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </motion.div>
+      )}
 
       {/* Quick actions */}
       <motion.div className="grid md:grid-cols-3 gap-5" variants={container} initial="hidden" animate="show">

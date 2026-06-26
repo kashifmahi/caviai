@@ -50,8 +50,8 @@ export function AuthProvider({ children }) {
     await refresh();
   };
 
-  const register = async (username, email, password) => {
-    const { data } = await api.post("/auth/register", { username, email, password });
+  const register = async (username, email, password, referralCode) => {
+    const { data } = await api.post("/auth/register", { username, email, password, referralCode });
     return data;
   };
 
@@ -91,7 +91,9 @@ export function AuthProvider({ children }) {
     const message = nonceData.message;
     if (chain === "evm") signature = await signMessageEvm(provider, message, address);
     else signature = await signMessageSolana(provider, message);
-    const { data } = await api.post("/auth/wallet-login", { address, message, signature, chain });
+    const referralCode = localStorage.getItem("cavi_ref") || undefined;
+    const { data } = await api.post("/auth/wallet-login", { address, message, signature, chain, referralCode });
+    localStorage.removeItem("cavi_ref");
     setSession(data);
     await refresh();
   };
@@ -102,7 +104,9 @@ export function AuthProvider({ children }) {
     const { data: nonceData } = await api.post("/auth/wallet-nonce", { address, chain });
     const message = nonceData.message;
     const signature = await signMessageFn(message);
-    const { data } = await api.post("/auth/wallet-login", { address, message, signature, chain });
+    const referralCode = localStorage.getItem("cavi_ref") || undefined;
+    const { data } = await api.post("/auth/wallet-login", { address, message, signature, chain, referralCode });
+    localStorage.removeItem("cavi_ref");
     setSession(data);
     await refresh();
   };

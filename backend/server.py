@@ -60,6 +60,7 @@ MAX_AVATAR_BYTES = 5 * 1024 * 1024
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_LOCK_MINUTES = 15
 MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
+REFERRAL_RATE = 0.10  # referrer earns 10% of a referee's monthly staking profit
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("cavi")
@@ -410,6 +411,7 @@ class RegisterReq(BaseModel):
     username: str
     email: EmailStr
     password: str
+    referralCode: str | None = None
 
 class LoginReq(BaseModel):
     email: EmailStr
@@ -443,6 +445,7 @@ class WalletVerifyReq(BaseModel):
     signature: str
     chain: str
     username: str | None = None
+    referralCode: str | None = None
 
 class UpdateUsernameReq(BaseModel):
     username: str
@@ -461,6 +464,11 @@ class DepositReq(BaseModel):
     amount: float
 
 class WithdrawalReq(BaseModel):
+    amount: float
+    network: str
+    destinationAddress: str
+
+class ReferralWithdrawReq(BaseModel):
     amount: float
     network: str
     destinationAddress: str
@@ -489,7 +497,7 @@ async def user_financials(user_id: str) -> dict:
         [{"$match": {"userId": user_id}}, {"$group": {"_id": None, "t": {"$sum": "$amount"}}}]).to_list(1)
     roi_total = roi_agg[0]["t"] if roi_agg else 0.0
     wd_agg = await db.withdrawals.aggregate(
-        [{"$match": {"userId": user_id, "status": "approved"}},
+        [{"$match": {"userId": user_id, "status": "approved", "source": {"$ne": "referral"}}},
          {"$group": {"_id": None, "t": {"$sum": "$netAmount"}}}]).to_list(1)
     wd_total = wd_agg[0]["t"] if wd_agg else 0.0
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
@@ -497,6 +505,123 @@ async def user_financials(user_id: str) -> dict:
     balance = deposit_base + roi_total - wd_total
     return {"depositBase": deposit_base, "roiEarned": round(roi_total, 4),
             "withdrawn": round(wd_total, 4), "balance": round(balance, 4)}
+
+# ----------------------------------------------------------------------------
+# Referral helpers
+# ----------------------------------------------------------------------------
+def gen_referral_code() -> str:
+    return secrets.token_hex(4).upper()  # 8 hex chars
+
+async def unique_referral_code() -> str:
+    for _ in range(10):
+        code = gen_referral_code()
+        if not await db.users.find_one({"referralCode": code}):
+            return code
+    return secrets.token_hex(6).upper()
+
+async def ensure_referral_code(user: dict) -> str:
+    code = user.get("referralCode")
+    if code:
+        return code
+    code = await unique_referral_code()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"referralCode": code}})
+    return code
+
+async def resolve_referrer_id(code: str | None) -> str | None:
+    if not code:
+        return None
+    ref = await db.users.find_one({"referralCode": code.strip().upper()}, {"_id": 0, "id": 1})
+    return ref["id"] if ref else None
+
+def referral_link(code: str) -> str:
+    base = FRONTEND_URL or ""
+    return f"{base}/signup?ref={code}"
+
+async def _referee_monthly_roi(referee_id: str) -> dict:
+    """Return {YYYY-MM: total roi amount} for a referee."""
+    out = {}
+    async for r in db.roi.aggregate([
+        {"$match": {"userId": referee_id}},
+        {"$group": {"_id": {"$substr": ["$cycleDate", 0, 7]}, "t": {"$sum": "$amount"}}},
+    ]):
+        if r["_id"]:
+            out[r["_id"]] = round(r["t"], 6)
+    return out
+
+async def referral_balance(user_id: str) -> dict:
+    earned_agg = await db.referral_claims.aggregate(
+        [{"$match": {"referrerId": user_id}}, {"$group": {"_id": None, "t": {"$sum": "$amount"}}}]).to_list(1)
+    earned = earned_agg[0]["t"] if earned_agg else 0.0
+    wd_agg = await db.withdrawals.aggregate(
+        [{"$match": {"userId": user_id, "status": "approved", "source": "referral"}},
+         {"$group": {"_id": None, "t": {"$sum": "$netAmount"}}}]).to_list(1)
+    wd_total = wd_agg[0]["t"] if wd_agg else 0.0
+    pending_wd_agg = await db.withdrawals.aggregate(
+        [{"$match": {"userId": user_id, "status": "pending", "source": "referral"}},
+         {"$group": {"_id": None, "t": {"$sum": "$amount"}}}]).to_list(1)
+    pending_wd = pending_wd_agg[0]["t"] if pending_wd_agg else 0.0
+    return {"earned": round(earned, 4), "withdrawn": round(wd_total, 4),
+            "pendingWithdraw": round(pending_wd, 4),
+            "balance": round(earned - wd_total - pending_wd, 4)}
+
+async def referral_overview(user: dict) -> dict:
+    """Full referral snapshot for a referrer. Earning continues only while the
+    referee still has a positive balance (hasn't withdrawn everything)."""
+    code = await ensure_referral_code(user)
+    referees = await db.users.find({"referredBy": user["id"]}, {"_id": 0}).to_list(2000)
+    current_month = now_pkt().date().isoformat()[:7]
+    # already-claimed months keyed by (refereeId, month)
+    claimed_map = {}
+    async for c in db.referral_claims.find({"referrerId": user["id"]}, {"_id": 0}):
+        claimed_map[(c["refereeId"], c["month"])] = c["amount"]
+
+    claimable_total = 0.0
+    pending_total = 0.0
+    active_count = 0
+    referee_rows = []
+    for r in referees:
+        fin = await user_financials(r["id"])
+        active = fin["balance"] > 0  # still has money staked
+        if active:
+            active_count += 1
+        monthly = await _referee_monthly_roi(r["id"])
+        their_claimable = 0.0
+        their_pending = 0.0
+        for month, roi_amt in monthly.items():
+            reward = round(roi_amt * REFERRAL_RATE, 4)
+            if month == current_month:
+                their_pending += reward
+            elif (r["id"], month) not in claimed_map and active:
+                their_claimable += reward
+        claimed_from_them = round(sum(v for (rid, _), v in claimed_map.items() if rid == r["id"]), 4)
+        claimable_total += their_claimable
+        pending_total += their_pending
+        referee_rows.append({
+            "username": r.get("username") or "User",
+            "joinedAt": r.get("createdAt"),
+            "active": active,
+            "theirProfit": fin["roiEarned"],
+            "claimable": round(their_claimable, 4),
+            "pending": round(their_pending, 4),
+            "claimed": claimed_from_them,
+        })
+    bal = await referral_balance(user["id"])
+    claims = await db.referral_claims.find({"referrerId": user["id"]}, {"_id": 0}).sort("claimedAt", -1).to_list(200)
+    return {
+        "referralCode": code,
+        "referralLink": referral_link(code),
+        "rate": REFERRAL_RATE,
+        "referredCount": len(referees),
+        "activeCount": active_count,
+        "claimable": round(claimable_total, 4),
+        "pendingThisMonth": round(pending_total, 4),
+        "earned": bal["earned"],
+        "withdrawn": bal["withdrawn"],
+        "pendingWithdraw": bal["pendingWithdraw"],
+        "balance": bal["balance"],
+        "referees": referee_rows,
+        "claims": claims,
+    }
 
 # ----------------------------------------------------------------------------
 # AUTH ROUTES
@@ -516,6 +641,7 @@ async def register(body: RegisterReq):
             "password": hash_password(body.password),
             "otp": otp, "otpExpiresAt": now + timedelta(minutes=10),
             "attempts": 0, "createdAt": now,
+            "referralCode": (body.referralCode or "").strip().upper() or None,
         }},
         upsert=True,
     )
@@ -544,12 +670,15 @@ async def verify_otp(body: VerifyOtpReq):
         await db.pending_registrations.delete_one({"email": email})
         raise HTTPException(status_code=400, detail="Email already registered")
     uid = str(uuid.uuid4())
+    referred_by = await resolve_referrer_id(pending.get("referralCode"))
     doc = {
         "id": uid, "username": pending["username"], "email": email,
         "password": pending["password"], "loginType": "email",
         "walletAddress": None, "role": "user", "roiAllowed": True,
         "wdAllowed": True, "depositBase": 0.0, "depositCount": 0, "securityFlag": False,
         "emailVerified": True,
+        "referralCode": await unique_referral_code(),
+        "referredBy": referred_by,
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(dict(doc))
@@ -761,11 +890,14 @@ async def wallet_login(body: WalletVerifyReq):
     if not user:
         uid = str(uuid.uuid4())
         username = body.username or f"{body.address[:6]}...{body.address[-4:]}"
+        referred_by = await resolve_referrer_id(body.referralCode)
         user = {
             "id": uid, "username": username, "email": None, "password": None,
             "loginType": "wallet", "walletAddress": body.address, "role": "user",
             "roiAllowed": True, "wdAllowed": True, "depositBase": 0.0,
             "depositCount": 0, "securityFlag": False,
+            "referralCode": await unique_referral_code(),
+            "referredBy": referred_by,
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
         await db.users.insert_one(dict(user))
@@ -999,6 +1131,70 @@ async def my_withdrawals(user: dict = Depends(get_current_user)):
     return {"withdrawals": items, "penaltyWindow": in_penalty_window()}
 
 # ----------------------------------------------------------------------------
+# REFERRAL ROUTES
+# ----------------------------------------------------------------------------
+@api.get("/referrals")
+async def my_referrals(user: dict = Depends(get_current_user)):
+    return await referral_overview(user)
+
+@api.post("/referrals/claim")
+async def claim_referrals(user: dict = Depends(get_current_user)):
+    referees = await db.users.find({"referredBy": user["id"]}, {"_id": 0}).to_list(2000)
+    current_month = now_pkt().date().isoformat()[:7]
+    claimed = set()
+    async for c in db.referral_claims.find({"referrerId": user["id"]}, {"_id": 0, "refereeId": 1, "month": 1}):
+        claimed.add((c["refereeId"], c["month"]))
+    now_iso = datetime.now(timezone.utc).isoformat()
+    new_claims = []
+    total = 0.0
+    for r in referees:
+        fin = await user_financials(r["id"])
+        if fin["balance"] <= 0:  # referee withdrew everything — earning stopped
+            continue
+        monthly = await _referee_monthly_roi(r["id"])
+        for month, roi_amt in monthly.items():
+            if month >= current_month:
+                continue  # only completed months are claimable
+            if (r["id"], month) in claimed:
+                continue
+            reward = round(roi_amt * REFERRAL_RATE, 4)
+            if reward <= 0:
+                continue
+            new_claims.append({
+                "id": str(uuid.uuid4()), "referrerId": user["id"], "refereeId": r["id"],
+                "refereeName": r.get("username") or "User", "month": month,
+                "refereeMonthlyProfit": round(roi_amt, 4), "amount": reward,
+                "claimedAt": now_iso,
+            })
+            total += reward
+    if not new_claims:
+        raise HTTPException(status_code=400, detail="Nothing to claim yet. Rewards become claimable after each full month.")
+    await db.referral_claims.insert_many(new_claims)
+    bal = await referral_balance(user["id"])
+    return {"claimed": round(total, 4), "count": len(new_claims), "balance": bal["balance"]}
+
+@api.post("/referrals/withdraw")
+async def withdraw_referrals(body: ReferralWithdrawReq, user: dict = Depends(get_current_user)):
+    if not user.get("wdAllowed", True):
+        raise HTTPException(status_code=403, detail="Withdrawals are disabled for your account")
+    if body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    bal = await referral_balance(user["id"])
+    if body.amount > bal["balance"]:
+        raise HTTPException(status_code=400, detail="Insufficient referral balance")
+    doc = {
+        "id": str(uuid.uuid4()), "userId": user["id"], "amount": body.amount,
+        "network": body.network, "destinationAddress": body.destinationAddress,
+        "penaltyAmount": 0.0, "netAmount": body.amount, "status": "pending",
+        "source": "referral",
+        "requestedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.withdrawals.insert_one(dict(doc))
+    doc.pop("_id", None)
+    notify_withdrawal(user, doc)
+    return {"withdrawal": doc, "balance": (await referral_balance(user["id"]))["balance"]}
+
+# ----------------------------------------------------------------------------
 # PRICES (CoinGecko, in-memory cached)
 # ----------------------------------------------------------------------------
 _price_cache = {"ts": 0, "data": []}
@@ -1069,7 +1265,7 @@ async def admin_users(admin: dict = Depends(require_admin)):
         roi_map[r["_id"]] = r["t"]
     wd_map = {}
     async for w in db.withdrawals.aggregate(
-        [{"$match": {"status": "approved"}}, {"$group": {"_id": "$userId", "t": {"$sum": "$netAmount"}}}]):
+        [{"$match": {"status": "approved", "source": {"$ne": "referral"}}}, {"$group": {"_id": "$userId", "t": {"$sum": "$netAmount"}}}]):
         wd_map[w["_id"]] = w["t"]
     for u in users:
         base = u.get("depositBase", 0)
@@ -1306,6 +1502,9 @@ async def startup():
     await db.pending_registrations.create_index("createdAt", expireAfterSeconds=3600)
     await db.password_reset_tokens.create_index("token", unique=True)
     await db.password_reset_tokens.create_index("expiresAt", expireAfterSeconds=3600)
+    await db.users.create_index("referralCode", sparse=True)
+    await db.users.create_index("referredBy", sparse=True)
+    await db.referral_claims.create_index([("referrerId", 1), ("refereeId", 1), ("month", 1)], unique=True)
     await seed_admin()
     await get_settings()
     asyncio.create_task(roi_scheduler())

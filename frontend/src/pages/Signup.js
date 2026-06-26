@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2, Eye, EyeOff, MailCheck, ArrowLeft } from "lucide-react";
+import { Loader2, Eye, EyeOff, MailCheck, ArrowLeft, Gift } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatError } from "@/lib/api";
 import WalletButtons from "@/components/WalletButtons";
@@ -11,6 +11,7 @@ import { PasswordStrength, isPasswordStrong } from "@/components/PasswordStrengt
 export default function Signup() {
   const { register, verifyOtp, resendOtp, user } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [step, setStep] = useState("form"); // form | otp
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -19,6 +20,19 @@ export default function Signup() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [refCode, setRefCode] = useState("");
+
+  useEffect(() => {
+    const r = params.get("ref");
+    if (r) {
+      const code = r.trim().toUpperCase();
+      setRefCode(code);
+      localStorage.setItem("cavi_ref", code);
+    } else {
+      const stored = localStorage.getItem("cavi_ref");
+      if (stored) setRefCode(stored);
+    }
+  }, [params]);
 
   useEffect(() => {
     if (user) navigate("/app");
@@ -32,7 +46,7 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      const data = await register(username, email, password);
+      const data = await register(username, email, password, refCode || undefined);
       if (data?.emailSent === false) {
         toast.warning("Account pending — but we couldn't send the email. Contact support.");
       } else {
@@ -51,6 +65,7 @@ export default function Signup() {
     setLoading(true);
     try {
       await verifyOtp(email, otp.trim());
+      localStorage.removeItem("cavi_ref");
       toast.success("Email verified — welcome to CAVI");
       navigate("/app");
     } catch (err) {
@@ -104,6 +119,12 @@ export default function Signup() {
 
   return (
     <AuthShell title="Create account" subtitle="Start growing your wealth with CAVI">
+      {refCode && (
+        <div className="flex items-center gap-3 rounded-sm border border-[#00d4a0]/40 bg-[#00d4a0]/5 px-4 py-3 mb-5" data-testid="signup-ref-banner">
+          <Gift className="w-4 h-4 text-[#00d4a0] shrink-0" />
+          <span className="text-sm text-white/70">You were invited with code <span className="ff-mono text-[#00d4a0]">{refCode}</span></span>
+        </div>
+      )}
       <WalletButtons />
       <div className="flex items-center gap-4 my-6">
         <div className="h-px bg-white/10 flex-1" />
