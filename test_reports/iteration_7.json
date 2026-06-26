@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 7 verified both deliverables. BACKEND (14/14 pytest pass against the preview URL): PATCH /api/auth/profile updates username/bio and persists (GET /auth/me returns the new values); validation works — username <2 or >40 returns 400 'Display name must be 2-40 characters.', bio >280 returns 400 'Bio must be 280 characters or fewer.', unauth returns 401. POST /api/auth/avatar with a real 2x2 PNG returns 200 {avatarUrl:/api/avatars/<id>_<hex>.png, user:{avatarUrl,...}}; .txt upload returns 400 'Only PNG, JPG or WEBP images are allowed.'; >5MB returns 400; GET /api/avatars/<file> serves with content-type image/png 200; '..' path traversal and unknown filename return 404. Regression: /api/auth/login (NewCavi@2026), /api/auth/me, /api/wallets, /api/roi all 200. FRONTEND (Playwright on the preview URL): logged in as hajraanwar157@gmail.com, /app Overview renders all 9 testids (stat-balance, stat-deposit, stat-roi, stat-withdrawn, overview-roi-chart, overview-network-chart, quick-wallets, quick-roi, quick-withdrawals) with no page-breaking console errors. Sidebar nav-settings navigates to /app/settings, profile-title visible, editing profile-name-input + profile-bio-input enables settings-save-button, clicking it shows the 'Profile saved' toast; after a full page reload the new name 'Hajra Anwar' and bio 'E2E test bio from iteration 7.' both persisted (read back from the inputs). Avatar upload via avatar-file-input (hidden, triggered by avatar-upload-btn) succeeded — the new avatar image is visible both in the Profile card and in the sidebar user-profile-link block. user-profile-link is present and points at /app/settings. Wallet modal regression on /login: data-testid='wallet-connect-btn' opens the Reown <w3m-modal> showing WalletConnect (QR CODE), Binance Wallet, MetaMask, SafePal, Trust Wallet, Search Wallet 530+; modal text length 1793 chars, zero 'Project id ... missing' text, zero JS pageerrors. Real signing is not exercisable headlessly (per task brief), but the modal-open + no-crash check confirms the wagmi useSignMessage refactor did not break the connect path.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_profile_avatar.py",
+    "/app/test_reports/pytest/iter7_profile_avatar.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~1200 lines — consider splitting into routers (auth, wallets, roi, admin) for maintainability; not blocking.",
+    "POST /api/auth/avatar trusts the file extension only (no magic-byte sniff). A renamed .exe.png would pass the extension check; for hardening, use python-magic or PIL.Image.verify(). Low risk because content-type on serve is forced from the extension and the file is only served from a fixed dir, but worth adding.",
+    "PATCH /api/auth/profile silently ignores unknown fields (ok with current Pydantic model). When neither username nor bio is provided, it returns the existing user with 200 — that's fine, but a 400 'No fields to update' could be slightly more explicit.",
+    "Avatar cleanup glob `{user_id}_*` is safe because filenames are server-generated, but consider deleting based on a stored previous-avatar reference instead of glob-by-prefix to avoid surprises if storage layout ever changes.",
+    "Overview chart cards (recharts AreaChart/PieChart) should be guarded against empty data — main agent already shows the cards even with zeros; confirm the empty-state copy is reasonable for brand-new users (we tested with a user that had history)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_profile_avatar.py (new pytest suite for profile + avatar + regression)"
+  ],
+  "success_rate": { "backend": "100% (14/14 pytest)", "frontend": "100% (overview testids, settings nav, profile save+persist, avatar upload, wallet modal)" },
+  "test_credentials": "hajraanwar157@gmail.com / NewCavi@2026 (unchanged from iter6). Superadmin: superadmin@cavi.io / Cavi@Admin2025.",
+  "seed_data_creation": "None. Used existing test user. Profile bio was set to 'E2E test bio from iteration 7.' and a new 2x2 blue PNG avatar was uploaded — main agent can revert these if desired, but they are harmless display-only fields.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Profile + avatar endpoints live at PATCH /api/auth/profile, POST /api/auth/avatar (multipart 'file'), GET /api/avatars/{filename}. Frontend testids: profile-title, profile-name-input, profile-bio-input, settings-save-button, avatar-upload-btn, avatar-file-input (hidden — use set_input_files), user-profile-link, nav-settings. Overview testids: stat-balance/deposit/roi/withdrawn, overview-roi-chart, overview-network-chart, quick-wallets/roi/withdrawals. Wallet modal still uses data-testid='wallet-connect-btn' on /login and renders <w3m-modal>; signing path moved to wagmi useSignMessage (cannot be exercised headlessly). Reusable backend regression suite: /app/backend/tests/test_profile_avatar.py.",
+  "rca of the issue": "N/A — this iteration was feature verification + the wallet 'stuck on Connecting…' bug fix. The bug fix (switching EVM signing from a raw provider.request personal_sign to wagmi's useSignMessage in WalletButtons.js) cannot be fully proven headlessly because real signing requires an actual wallet, but the connect modal opens cleanly with no project-id error and no JS pageerrors, which rules out a regression in the connect path."
+}

@@ -14,6 +14,7 @@ import Overview from "@/pages/dashboard/Overview";
 import WalletsPage from "@/pages/dashboard/WalletsPage";
 import RoiPage from "@/pages/dashboard/RoiPage";
 import WithdrawalsPage from "@/pages/dashboard/WithdrawalsPage";
+import ProfilePage from "@/pages/dashboard/ProfilePage";
 import AdminPanel from "@/pages/AdminPanel";
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
               <Route path="wallets" element={<WalletsPage />} />
               <Route path="roi" element={<RoiPage />} />
               <Route path="withdrawals" element={<WithdrawalsPage />} />
+              <Route path="settings" element={<ProfilePage />} />
             </Route>
             <Route
               path="/admin"

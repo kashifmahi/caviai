@@ -76,3 +76,37 @@ export function shortAddr(a) {
   if (!a) return "—";
   return a.length > 14 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a;
 }
+
+export function mediaUrl(path) {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${process.env.REACT_APP_BACKEND_URL}${path}`;
+}
+
+export function Avatar({ user, size = 40, className = "" }) {
+  const url = mediaUrl(user?.avatarUrl);
+  const initials = (user?.username || "?").trim().slice(0, 2).toUpperCase();
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={user?.username || "avatar"}
+        className={`rounded-full object-cover border border-white/10 ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <div
+      className={`rounded-full flex items-center justify-center ff-head font-bold text-white border border-[#6c63ff]/40 ${className}`}
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.4,
+        background: "linear-gradient(135deg, #6c63ff 0%, #00d4a0 120%)",
+      }}
+    >
+      {initials}
+    </div>
+  );
+}

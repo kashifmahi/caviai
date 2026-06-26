@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
-import { LayoutDashboard, Wallet, TrendingUp, ArrowUpFromLine, Shield, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Wallet, TrendingUp, ArrowUpFromLine, Shield, LogOut, Menu, X, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { shortAddr } from "@/components/shared";
+import { shortAddr, Avatar } from "@/components/shared";
 import { LogoMark } from "@/components/Logo";
 
 const LINKS = [
@@ -10,6 +10,7 @@ const LINKS = [
   { to: "/app/wallets", label: "Wallets", icon: Wallet, testId: "nav-wallets" },
   { to: "/app/roi", label: "ROI", icon: TrendingUp, testId: "nav-roi" },
   { to: "/app/withdrawals", label: "Withdrawals", icon: ArrowUpFromLine, testId: "nav-withdrawals" },
+  { to: "/app/settings", label: "Settings", icon: Settings, testId: "nav-settings" },
 ];
 
 export default function DashboardLayout() {
@@ -53,12 +54,15 @@ export default function DashboardLayout() {
         )}
       </nav>
       <div className="border-t border-white/5 pt-4 mt-4">
-        <div className="px-3 mb-3">
-          <div className="text-sm font-medium truncate" data-testid="user-name">{user?.username}</div>
-          <div className="ff-mono text-xs text-white/40 truncate">
-            {user?.email || shortAddr(user?.walletAddress)}
+        <Link to="/app/settings" onClick={() => setOpen(false)} className="flex items-center gap-3 px-3 mb-3 group" data-testid="user-profile-link">
+          <Avatar user={user} size={36} />
+          <div className="min-w-0">
+            <div className="text-sm font-medium truncate group-hover:text-white" data-testid="user-name">{user?.username}</div>
+            <div className="ff-mono text-xs text-white/40 truncate">
+              {user?.email || shortAddr(user?.walletAddress)}
+            </div>
           </div>
-        </div>
+        </Link>
         <button
           onClick={() => { logout(); navigate("/"); }}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/50 hover:text-[#ff4757] hover:bg-[#ff4757]/10 w-full transition-all"

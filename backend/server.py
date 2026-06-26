@@ -26,7 +26,8 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status, UploadFile, File
+from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
@@ -50,6 +51,11 @@ SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER or SUPPORT_EMAIL)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
 ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL')
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
+
+UPLOAD_DIR = ROOT_DIR / "uploads" / "avatars"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+AVATAR_EXTS = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
+MAX_AVATAR_BYTES = 5 * 1024 * 1024
 MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -401,6 +407,10 @@ class WalletVerifyReq(BaseModel):
 class UpdateUsernameReq(BaseModel):
     username: str
 
+class ProfileUpdateReq(BaseModel):
+    username: str | None = None
+    bio: str | None = None
+
 class CreateWalletReq(BaseModel):
     network: str  # ETH/SOL/BNB/TRC20
     address: str
@@ -675,6 +685,57 @@ async def update_username(body: UpdateUsernameReq, user: dict = Depends(get_curr
     await db.users.update_one({"id": user["id"]}, {"$set": {"username": body.username}})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     return {"user": public_user(updated)}
+
+@api.patch("/auth/profile")
+async def update_profile(body: ProfileUpdateReq, user: dict = Depends(get_current_user)):
+    updates = {}
+    if body.username is not None:
+        name = body.username.strip()
+        if len(name) < 2 or len(name) > 40:
+            raise HTTPException(status_code=400, detail="Display name must be 2-40 characters.")
+        updates["username"] = name
+    if body.bio is not None:
+        if len(body.bio) > 280:
+            raise HTTPException(status_code=400, detail="Bio must be 280 characters or fewer.")
+        updates["bio"] = body.bio.strip()
+    if updates:
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {"user": public_user(updated)}
+
+@api.post("/auth/avatar")
+async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in AVATAR_EXTS:
+        raise HTTPException(status_code=400, detail="Only PNG, JPG or WEBP images are allowed.")
+    data = await file.read()
+    if len(data) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller.")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    filename = f"{user['id']}_{uuid.uuid4().hex[:8]}.{ext}"
+    (UPLOAD_DIR / filename).write_bytes(data)
+    # remove this user's previous avatar files
+    for old in UPLOAD_DIR.glob(f"{user['id']}_*"):
+        if old.name != filename:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+    avatar_url = f"/api/avatars/{filename}"
+    await db.users.update_one({"id": user["id"]}, {"$set": {"avatarUrl": avatar_url}})
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {"user": public_user(updated), "avatarUrl": avatar_url}
+
+@api.get("/avatars/{filename}")
+async def get_avatar(filename: str):
+    if "/" in filename or ".." in filename:
+        raise HTTPException(status_code=404, detail="Not found")
+    path = UPLOAD_DIR / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    ext = filename.rsplit(".", 1)[-1].lower()
+    return FileResponse(str(path), media_type=AVATAR_EXTS.get(ext, "application/octet-stream"))
 
 # ----------------------------------------------------------------------------
 # WALLET ROUTES

@@ -118,9 +118,25 @@ export function AuthProvider({ children }) {
     setUser(data.user);
   };
 
+  const updateProfile = async (fields) => {
+    const { data } = await api.patch("/auth/profile", fields);
+    setUser(data.user);
+    return data.user;
+  };
+
+  const uploadAvatar = async (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const { data } = await api.post("/auth/avatar", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    setUser(data.user);
+    return data.user;
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, walletSignIn, logout, refresh, updateUsername }}
+      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, walletSignIn, logout, refresh, updateUsername, updateProfile, uploadAvatar }}
     >
       {children}
     </AuthContext.Provider>
