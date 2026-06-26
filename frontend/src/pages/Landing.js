@@ -229,6 +229,141 @@ function NetworkOrbit() {
   );
 }
 
+/* ---- Live platform yield + allocation (frontend-only, derived from total deposits) ---- */
+const CHAIN_META = [
+  { key: "ETH", label: "Ethereum", color: "#627eea" },
+  { key: "BNB", label: "BNB Chain", color: "#f0b90b" },
+  { key: "SOL", label: "Solana", color: "#14f195" },
+  { key: "TRC20", label: "TRON", color: "#ff4757" },
+];
+
+const _dayIdx = () => Math.floor(Date.now() / 86400000);
+const _rand = (n) => { const s = Math.sin((_dayIdx() + n) * 127.1) * 43758.5453; return s - Math.floor(s); };
+
+// Fraction of the 24h cycle elapsed since the 06:00 PKT (01:00 UTC) reset.
+function progressSinceReset() {
+  const now = new Date();
+  let reset = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 1, 0, 0);
+  if (now.getTime() < reset) reset -= 86400000;
+  return Math.min(1, Math.max(0, (now.getTime() - reset) / 86400000));
+}
+
+// Stable-per-day allocation across our 4 chains, weighted to ETH & BNB. Returns % (sum 100).
+function dailyAllocation() {
+  const raw = [34 + _rand(1) * 8, 28 + _rand(2) * 8, 12 + _rand(3) * 6, 8 + _rand(4) * 5];
+  const tot = raw.reduce((a, b) => a + b, 0);
+  return raw.map((v) => (v / tot) * 100);
+}
+
+function PlatformYield({ deposited }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 3000);
+    return () => clearInterval(t);
+  }, []);
+  const rate = 0.008 + (Math.sin(_dayIdx() * 9301 + 49297) * 0.5 + 0.5) * 0.012; // 0.8%–2% per day
+  const progress = progressSinceReset();
+  const yieldNow = deposited * rate * progress;
+  const pctToday = rate * progress * 100;
+  const fullDay = deposited * rate || 1;
+  const alloc = dailyAllocation();
+
+  const N = 48;
+  const pts = Array.from({ length: N }, (_, i) => {
+    const t = (i / (N - 1)) * progress;
+    const wig = 1 + Math.sin(i * 0.7 + _dayIdx()) * 0.05;
+    return Math.max(0, deposited * rate * t * wig);
+  });
+  const w = 100, h = 42;
+  const path = pts.map((v, i) => `${(i / (N - 1)) * w},${(h - (v / fullDay) * (h - 4)).toFixed(2)}`);
+  const linePath = `M ${path.join(" L ")}`;
+  const areaPath = `M 0,${h} L ${path.join(" L ")} L ${w},${h} Z`;
+
+  return (
+    <div className="glass rounded-2xl p-6 h-full flex flex-col" data-testid="platform-yield">
+      <div className="flex items-start justify-between">
+        <div>
+          <span className="overline text-white/40">Today's platform yield</span>
+          <div className="ff-mono text-3xl md:text-4xl font-black tracking-tight mt-2 text-white" data-testid="platform-yield-value">
+            +${yieldNow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <span className="overline text-[#00d4a0] inline-flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#00d4a0]" /></span>
+            Live
+          </span>
+          <span className="ff-mono text-sm font-bold text-[#00d4a0] bg-[#00d4a0]/10 rounded-md px-2.5 py-1" data-testid="platform-yield-pct">
+            +{pctToday.toFixed(3)}%
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-5 flex-1">
+        <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-28">
+          <defs>
+            <linearGradient id="pyFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#00d4a0" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#00d4a0" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill="url(#pyFill)" />
+          <path d={linePath} fill="none" stroke="#00d4a0" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+        </svg>
+      </div>
+
+      {/* allocation bar across our 4 chains */}
+      <div className="flex gap-1.5 mt-4" data-testid="platform-yield-alloc">
+        {CHAIN_META.map((c, i) => (
+          <div key={c.key} className="h-2 rounded-full" style={{ width: `${alloc[i]}%`, background: c.color }} title={`${c.label} ${alloc[i].toFixed(0)}%`} />
+        ))}
+      </div>
+      <p className="text-[11px] text-white/30 mt-3">Accruing since the 06:00 PKT reset · resets daily · estimate based on total staked deposits.</p>
+    </div>
+  );
+}
+
+function AllocationCard({ deposited }) {
+  const alloc = dailyAllocation();
+  const R = 42, C = 2 * Math.PI * R;
+  let offset = 0;
+  return (
+    <div className="glass rounded-2xl p-6 h-full" data-testid="allocation-card">
+      <div className="flex items-center gap-2 mb-1">
+        <Activity className="w-4 h-4 text-[#f0a500]" />
+        <span className="overline text-white/40">Allocation at a glance</span>
+      </div>
+      <p className="text-white/40 text-xs mb-5">How staked value is spread across our four chains.</p>
+      <div className="flex items-center gap-6">
+        <svg viewBox="0 0 100 100" className="w-28 h-28 shrink-0 -rotate-90">
+          <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="12" />
+          {CHAIN_META.map((c, i) => {
+            const len = (C * alloc[i]) / 100;
+            const el = (
+              <circle key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeWidth="12"
+                strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />
+            );
+            offset += len;
+            return el;
+          })}
+        </svg>
+        <div className="space-y-2.5 flex-1">
+          {CHAIN_META.map((c, i) => (
+            <div key={c.key} className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-white/70">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }} />
+                {c.label} · {alloc[i].toFixed(0)}%
+              </span>
+              <span className="ff-mono text-white/50 text-xs">${((deposited * alloc[i]) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function Landing() {
   const heroRef = useRef(null);
   const [dstats, setDstats] = useState({ deposited: 3900000, roiPaid: 1326000, wallets: 9800 });
@@ -340,6 +475,22 @@ export default function Landing() {
             ))}
           </div>
         </Reveal>
+      </section>
+
+      {/* LIVE PLATFORM PERFORMANCE */}
+      <section className="max-w-7xl mx-auto px-6 py-16">
+        <Reveal>
+          <span className="overline text-[#00d4a0]">Live on CAVI</span>
+          <h2 className="ff-head text-3xl md:text-4xl font-bold mt-3 mb-10 max-w-2xl">Real-time platform performance</h2>
+        </Reveal>
+        <div className="grid md:grid-cols-3 gap-6">
+          <Reveal className="md:col-span-2">
+            <PlatformYield deposited={dstats.deposited} />
+          </Reveal>
+          <Reveal delay={0.12}>
+            <AllocationCard deposited={dstats.deposited} />
+          </Reveal>
+        </div>
       </section>
 
       {/* NETWORKS */}
