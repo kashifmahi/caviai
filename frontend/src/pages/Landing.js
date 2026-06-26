@@ -312,7 +312,6 @@ function PlatformYield({ deposited }) {
             <div className="ff-mono text-3xl md:text-[2.6rem] leading-none font-black tracking-tight mt-2.5 text-white tabular-nums" data-testid="platform-yield-value">
               +${yieldNow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <div className="text-xs text-white/40 mt-2">of ${fullDay.toLocaleString(undefined, { maximumFractionDigits: 0 })} projected by next reset</div>
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className="overline text-[#00d4a0] inline-flex items-center gap-1.5">
@@ -374,8 +373,7 @@ function PlatformYield({ deposited }) {
             />
           ))}
         </div>
-        <div className="flex items-center justify-between mt-3">
-          <p className="text-[11px] text-white/30">Accruing since 06:00 PKT · resets daily</p>
+        <div className="flex items-center justify-end mt-4">
           <span className="text-[10px] ff-mono text-white/30 inline-flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-[#00d4a0] animate-pulse" /> updates every 3s</span>
         </div>
       </div>
@@ -419,21 +417,24 @@ function AllocationCard({ deposited }) {
   }, [inView]);
 
   const alloc = driftAllocation(tick);
-  const R = 44, C = 2 * Math.PI * R;
-  let acc = 0; const offsets = alloc.map((p) => { const o = acc; acc += p; return o; });
-  const activeIdx = tick % STEPS;
+  const idx = tick % STEPS;
+  const active = CHAIN_META[idx];
+  const pct = alloc[idx];
+  const amount = (deposited * pct) / 100;
+  const R = 46, C = 2 * Math.PI * R;
+  const arc = (C * pct) / 100;
 
   return (
     <motion.div
       ref={ref}
-      className="glass rounded-2xl p-6 h-full card-hover relative overflow-hidden"
+      className="glass rounded-2xl p-6 h-full card-hover relative overflow-hidden flex flex-col"
       whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300, damping: 22 }}
       data-testid="allocation-card"
     >
       <motion.div
-        className="absolute -top-16 -right-16 w-40 h-40 rounded-full blur-3xl"
-        animate={{ backgroundColor: `${CHAIN_META[activeIdx].color}22` }}
-        transition={{ duration: 1 }}
+        className="absolute -top-20 -right-20 w-52 h-52 rounded-full blur-3xl pointer-events-none"
+        animate={{ backgroundColor: `${active.color}26` }}
+        transition={{ duration: 1.2 }}
       />
       <div className="flex items-center gap-2 mb-1 relative">
         <span className="w-7 h-7 rounded-lg bg-[#f0a500]/15 flex items-center justify-center"><Activity className="w-3.5 h-3.5 text-[#f0a500]" /></span>
@@ -443,63 +444,52 @@ function AllocationCard({ deposited }) {
           live
         </span>
       </div>
-      <p className="text-white/40 text-xs mb-6 relative">See exactly how your value is spread across chains and assets, in plain language.</p>
+      <p className="text-white/40 text-xs mb-7 relative">See exactly how your value is spread across chains and assets, in plain language.</p>
 
-      <div className="flex items-center gap-6 relative">
-        <div className="relative w-32 h-32 shrink-0">
-          <svg viewBox="0 0 100 100" className="w-32 h-32 -rotate-90">
-            <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" />
-            {CHAIN_META.map((c, i) => {
-              const len = (C * alloc[i]) / 100;
-              const isActive = i === activeIdx;
-              return (
-                <motion.circle
-                  key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeLinecap="round"
-                  initial={false}
-                  animate={{
-                    strokeDasharray: `${len} ${C - len}`,
-                    strokeDashoffset: -(C * offsets[i]) / 100,
-                    strokeWidth: isActive ? 14 : 10,
-                    filter: isActive ? `drop-shadow(0 0 6px ${c.color})` : "none",
-                  }}
-                  transition={{ duration: 1.1, ease: "easeInOut" }}
-                />
-              );
-            })}
+      <div className="flex-1 flex flex-col items-center justify-center relative">
+        <div className="relative w-44 h-44">
+          <svg viewBox="0 0 100 100" className="w-44 h-44 -rotate-90">
+            <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="7" />
+            <motion.circle
+              cx="50" cy="50" r={R} fill="none" strokeLinecap="round" strokeWidth="7"
+              initial={false}
+              animate={{ stroke: active.color, strokeDasharray: `${arc} ${C - arc}`, filter: `drop-shadow(0 0 5px ${active.color})` }}
+              transition={{ duration: 1.1, ease: "easeInOut" }}
+            />
           </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
             <AnimatePresence mode="wait">
-              <motion.div key={activeIdx}
-                initial={{ opacity: 0, y: 8, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.9 }}
-                transition={{ duration: 0.4 }}>
-                <div className="ff-mono text-2xl font-black" style={{ color: CHAIN_META[activeIdx].color }}>{Math.round(alloc[activeIdx])}%</div>
-                <div className="text-[9px] uppercase tracking-wider text-white/50">{CHAIN_META[activeIdx].label}</div>
+              <motion.div key={idx}
+                initial={{ opacity: 0, y: 10, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.92 }}
+                transition={{ duration: 0.45 }}>
+                <div className="ff-mono text-4xl font-black tabular-nums" style={{ color: active.color }}>
+                  <SmoothPct value={pct} />
+                </div>
+                <div className="flex items-center justify-center gap-1.5 mt-1">
+                  <span className="w-2 h-2 rounded-full" style={{ background: active.color, boxShadow: `0 0 8px ${active.color}` }} />
+                  <span className="text-[11px] uppercase tracking-wider text-white/60 ff-mono">{active.label}</span>
+                </div>
               </motion.div>
             </AnimatePresence>
           </div>
         </div>
 
-        <div className="space-y-2 flex-1">
-          {CHAIN_META.map((c, i) => {
-            const isActive = i === activeIdx;
-            return (
-              <motion.div
-                key={c.key}
-                className="flex items-center justify-between text-sm rounded-md px-2 py-1.5 -mx-2"
-                animate={{ backgroundColor: isActive ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0)" }}
-                transition={{ duration: 0.4 }}
-              >
-                <span className="flex items-center gap-2 text-white/70">
-                  <motion.span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }}
-                    animate={{ scale: isActive ? 1.45 : 1, boxShadow: `0 0 8px ${c.color}aa` }} transition={{ duration: 0.4 }} />
-                  {c.label}
-                </span>
-                <span className="ff-mono text-xs tabular-nums" style={{ color: c.color }}>
-                  <SmoothPct value={alloc[i]} />
-                </span>
-              </motion.div>
-            );
-          })}
+        {/* active chain value */}
+        <AnimatePresence mode="wait">
+          <motion.div key={`amt-${idx}`}
+            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.4 }}
+            className="mt-5 ff-mono text-sm text-white/70">
+            ${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-white/35">staked on {active.label}</span>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* rotation dots */}
+        <div className="flex items-center gap-2 mt-5">
+          {CHAIN_META.map((c, i) => (
+            <motion.span key={c.key} className="rounded-full"
+              animate={{ width: i === idx ? 20 : 6, height: 6, backgroundColor: i === idx ? c.color : "rgba(255,255,255,0.18)" }}
+              transition={{ duration: 0.4 }} />
+          ))}
         </div>
       </div>
     </motion.div>
