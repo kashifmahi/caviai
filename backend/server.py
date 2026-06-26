@@ -195,6 +195,38 @@ def notify_deposit(user: dict, amount: float, network: str, roi_start: str):
         fire_email(ADMIN_NOTIFY_EMAIL, f"[CAVI] New deposit {amt} from {user.get('username')}", html,
                    f"New deposit {amt} ({network}) by {user.get('username')} ({user.get('email')}).")
 
+def notify_withdrawal_decision(user: dict, wd: dict, status: str):
+    if not user or not user.get("email"):
+        return
+    amt = _money(wd.get("amount"))
+    net = _money(wd.get("netAmount"))
+    if status == "approved":
+        html = _email_shell(
+            "Withdrawal approved",
+            f"<p>Hi {user.get('username','there')}, good news — your withdrawal has been approved and is being processed. ✅</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>You receive</td><td style='color:#fff;'>{net}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{wd.get('network')}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>To</td><td style='color:#fff;word-break:break-all;'>{wd.get('destinationAddress')}</td></tr>"
+            f"</table>"
+            f"<p>The funds will arrive at your destination address shortly.</p>",
+        )
+        fire_email(user["email"], "Your CAVI withdrawal was approved ✅", html,
+                   f"Your withdrawal of {amt} ({wd.get('network')}) was approved. You receive {net}.")
+    else:
+        html = _email_shell(
+            "Withdrawal rejected",
+            f"<p>Hi {user.get('username','there')}, your withdrawal request was not approved.</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{wd.get('network')}</td></tr>"
+            f"</table>"
+            f"<p>The amount remains available in your balance. If you have questions, contact us at {SUPPORT_EMAIL}.</p>",
+        )
+        fire_email(user["email"], "Your CAVI withdrawal was rejected", html,
+                   f"Your withdrawal of {amt} ({wd.get('network')}) was rejected. The amount remains in your balance. Contact {SUPPORT_EMAIL}.")
+
 def notify_withdrawal(user: dict, wd: dict):
     amt = _money(wd["amount"])
     net = _money(wd["netAmount"])
@@ -955,6 +987,8 @@ async def admin_action_withdrawal(wd_id: str, body: WithdrawalActionReq, admin: 
     await db.withdrawals.update_one({"id": wd_id}, {"$set": {"status": body.status}})
     await write_audit(admin["id"], f"withdrawal_{body.status}", wd_id,
                       f"Withdrawal {wd['amount']} {body.status}")
+    target = await db.users.find_one({"id": wd["userId"]}, {"_id": 0})
+    notify_withdrawal_decision(target, wd, body.status)
     return {"ok": True}
 
 @api.post("/admin/roi/run-cycle")

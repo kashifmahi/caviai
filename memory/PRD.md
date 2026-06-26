@@ -36,6 +36,10 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - ✅ Security hardening: forgot-password invalidates prior unused reset tokens; reset-password checks token validity before password rule.
 - Tested: testing_agent iteration_4 — backend 11/11 pass, frontend 100% on login/signup/forgot/reset/OTP/wallet-modal. No bugs. NOTE: preview env blocks Reown's remote config endpoint (config.reown.com) so AppKit logs a warning and uses local defaults — modal still works; expected to fetch full config in production.
 - PENDING (deferred, needs API keys): real on-chain deposit detection (Etherscan/BscScan/Solana RPC/TronGrid). Email path implemented instead per user choice.
+
+## Iteration 6 (2026-06-26) — Withdrawal decision emails
+- ✅ When an admin approves/rejects a withdrawal (PATCH /api/admin/withdrawals/{id}), the user now receives an email: "approved ✅" (with amount/net/network/destination) or "rejected" (funds remain in balance, contact support). Helper notify_withdrawal_decision in server.py. Closes the loop after the earlier "pending" email.
+- Tested: live curl flow — created withdrawals as test user, approved+rejected as superadmin; both emails confirmed sent to user in backend logs.
 - ✅ Strong password validation: min 8 + upper + lower + number + special. Enforced in backend (`validate_password_strength`) and frontend (`PasswordStrength.jsx` live meter on signup & reset).
 - ✅ Email OTP on registration: register now stores a `pending_registrations` doc + 6-digit OTP (10 min expiry), emails it via Hostinger SMTP; account is created only after `/auth/verify-otp`. Resend supported (`/auth/resend-otp`). Signup.js is now 2-step (form → OTP).
 - ✅ Forgot/Reset password: `/auth/forgot-password` emails a secure `secrets.token_urlsafe(32)` reset link (1h expiry, single-use, anti-enumeration); `/auth/reset-password` validates token+strength. New pages ForgotPassword.js, ResetPassword.js + routes; "Forgot password?" link on Login.
