@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useInView } from "framer-motion";
-import { ArrowRight, ShieldCheck, Zap, TrendingUp, Lock, Menu, X, Sparkles, Activity } from "lucide-react";
+import { ArrowRight, ShieldCheck, Zap, TrendingUp, Lock, Menu, X, Sparkles, Activity, ChevronDown } from "lucide-react";
 import PriceTicker from "@/components/PriceTicker";
 import { NetworkBadge, netLabel } from "@/components/shared";
 import { LogoMark, LogoWordmark } from "@/components/Logo";
@@ -255,6 +255,23 @@ function dailyAllocation() {
   return raw.map((v) => (v / tot) * 100);
 }
 
+function useSmoothValue(target) {
+  const [disp, setDisp] = useState(target);
+  const ref = useRef(target);
+  useEffect(() => {
+    let raf;
+    const step = () => {
+      ref.current += (target - ref.current) * 0.09;
+      if (Math.abs(target - ref.current) < 0.005) ref.current = target;
+      setDisp(ref.current);
+      if (ref.current !== target) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return disp;
+}
+
 function PlatformYield({ deposited }) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -263,63 +280,106 @@ function PlatformYield({ deposited }) {
   }, []);
   const rate = 0.008 + (Math.sin(_dayIdx() * 9301 + 49297) * 0.5 + 0.5) * 0.012; // 0.8%–2% per day
   const progress = progressSinceReset();
-  const yieldNow = deposited * rate * progress;
-  const pctToday = rate * progress * 100;
+  const target = deposited * rate * progress;
+  const yieldNow = useSmoothValue(target);
+  const pctToday = useSmoothValue(rate * progress * 100);
   const fullDay = deposited * rate || 1;
   const alloc = dailyAllocation();
 
-  const N = 48;
+  const N = 56;
   const pts = Array.from({ length: N }, (_, i) => {
     const t = (i / (N - 1)) * progress;
-    const wig = 1 + Math.sin(i * 0.7 + _dayIdx()) * 0.05;
+    const wig = 1 + Math.sin(i * 0.6 + _dayIdx()) * 0.05 + Math.sin(i * 1.9) * 0.02;
     return Math.max(0, deposited * rate * t * wig);
   });
-  const w = 100, h = 42;
-  const path = pts.map((v, i) => `${(i / (N - 1)) * w},${(h - (v / fullDay) * (h - 4)).toFixed(2)}`);
-  const linePath = `M ${path.join(" L ")}`;
-  const areaPath = `M 0,${h} L ${path.join(" L ")} L ${w},${h} Z`;
+  const w = 100, h = 44;
+  const coords = pts.map((v, i) => [(i / (N - 1)) * w, h - (v / fullDay) * (h - 5)]);
+  const linePath = `M ${coords.map((c) => `${c[0]},${c[1].toFixed(2)}`).join(" L ")}`;
+  const areaPath = `M 0,${h} L ${coords.map((c) => `${c[0]},${c[1].toFixed(2)}`).join(" L ")} L ${w},${h} Z`;
+  const end = coords[coords.length - 1];
 
   return (
-    <div className="glass rounded-2xl p-6 h-full flex flex-col" data-testid="platform-yield">
-      <div className="flex items-start justify-between">
-        <div>
-          <span className="overline text-white/40">Today's platform yield</span>
-          <div className="ff-mono text-3xl md:text-4xl font-black tracking-tight mt-2 text-white" data-testid="platform-yield-value">
-            +${yieldNow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    <motion.div
+      className="relative rounded-2xl p-[1px] overflow-hidden glow-pulse h-full"
+      whileHover={{ scale: 1.01 }} transition={{ type: "spring", stiffness: 300, damping: 22 }}
+      data-testid="platform-yield"
+    >
+      <div className="absolute inset-0 tracing opacity-60" />
+      <div className="relative glass rounded-2xl p-6 h-full flex flex-col">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="overline text-white/40">Today's platform yield</span>
+            <div className="ff-mono text-3xl md:text-[2.6rem] leading-none font-black tracking-tight mt-2.5 text-white tabular-nums" data-testid="platform-yield-value">
+              +${yieldNow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div className="text-xs text-white/40 mt-2">of ${fullDay.toLocaleString(undefined, { maximumFractionDigits: 0 })} projected by next reset</div>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <span className="overline text-[#00d4a0] inline-flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#00d4a0]" /></span>
+              Live
+            </span>
+            <motion.span
+              key={Math.round(pctToday * 1000)}
+              initial={{ y: -4, opacity: 0.5 }} animate={{ y: 0, opacity: 1 }}
+              className="ff-mono text-sm font-bold text-[#00d4a0] bg-[#00d4a0]/10 border border-[#00d4a0]/20 rounded-full px-3 py-1 tabular-nums"
+              data-testid="platform-yield-pct"
+            >
+              +{pctToday.toFixed(3)}%
+            </motion.span>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <span className="overline text-[#00d4a0] inline-flex items-center gap-1.5">
-            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#00d4a0]" /></span>
-            Live
-          </span>
-          <span className="ff-mono text-sm font-bold text-[#00d4a0] bg-[#00d4a0]/10 rounded-md px-2.5 py-1" data-testid="platform-yield-pct">
-            +{pctToday.toFixed(3)}%
-          </span>
+
+        <div className="relative mt-5 flex-1 flex items-end">
+          <div className="relative w-full">
+          <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-32 block">
+            <defs>
+              <linearGradient id="pyFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#00d4a0" stopOpacity="0.38" />
+                <stop offset="100%" stopColor="#00d4a0" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="pyLine" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#00d4a0" />
+                <stop offset="100%" stopColor="#6c63ff" />
+              </linearGradient>
+            </defs>
+            {[0.25, 0.5, 0.75].map((g) => (
+              <line key={g} x1="0" y1={h * g} x2={w} y2={h * g} stroke="rgba(255,255,255,0.04)" strokeWidth="0.3" />
+            ))}
+            <motion.path d={areaPath} fill="url(#pyFill)" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1.2 }} />
+            <motion.path
+              d={linePath} fill="none" stroke="url(#pyLine)" strokeWidth="1" strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+              initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.6, ease: "easeInOut" }}
+            />
+          </svg>
+          {/* pulsing end dot */}
+          <div className="absolute" style={{ left: `${end[0]}%`, top: `${(end[1] / h) * 100}%`, transform: "translate(-50%,-50%)" }}>
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-60" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#00d4a0] shadow-[0_0_12px_2px_rgba(0,212,160,0.7)]" />
+            </span>
+          </div>
+          </div>
+        </div>
+
+        {/* allocation bar across our 4 chains */}
+        <div className="flex gap-1.5 mt-5" data-testid="platform-yield-alloc">
+          {CHAIN_META.map((c, i) => (
+            <motion.div
+              key={c.key} className="h-2 rounded-full" style={{ background: c.color }}
+              initial={{ width: 0, opacity: 0 }} animate={{ width: `${alloc[i]}%`, opacity: 1 }}
+              transition={{ duration: 0.9, delay: 0.3 + i * 0.12, ease: "easeOut" }}
+              title={`${c.label} ${alloc[i].toFixed(0)}%`}
+            />
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-3">
+          <p className="text-[11px] text-white/30">Accruing since 06:00 PKT · resets daily</p>
+          <span className="text-[10px] ff-mono text-white/30 inline-flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-[#00d4a0] animate-pulse" /> updates every 3s</span>
         </div>
       </div>
-
-      <div className="mt-5 flex-1">
-        <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-28">
-          <defs>
-            <linearGradient id="pyFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#00d4a0" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#00d4a0" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path d={areaPath} fill="url(#pyFill)" />
-          <path d={linePath} fill="none" stroke="#00d4a0" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-        </svg>
-      </div>
-
-      {/* allocation bar across our 4 chains */}
-      <div className="flex gap-1.5 mt-4" data-testid="platform-yield-alloc">
-        {CHAIN_META.map((c, i) => (
-          <div key={c.key} className="h-2 rounded-full" style={{ width: `${alloc[i]}%`, background: c.color }} title={`${c.label} ${alloc[i].toFixed(0)}%`} />
-        ))}
-      </div>
-      <p className="text-[11px] text-white/30 mt-3">Accruing since the 06:00 PKT reset · resets daily · estimate based on total staked deposits.</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -328,41 +388,147 @@ function AllocationCard({ deposited }) {
   const R = 42, C = 2 * Math.PI * R;
   let offset = 0;
   return (
-    <div className="glass rounded-2xl p-6 h-full" data-testid="allocation-card">
+    <motion.div
+      className="glass rounded-2xl p-6 h-full card-hover"
+      whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300, damping: 22 }}
+      data-testid="allocation-card"
+    >
       <div className="flex items-center gap-2 mb-1">
-        <Activity className="w-4 h-4 text-[#f0a500]" />
+        <span className="w-7 h-7 rounded-lg bg-[#f0a500]/15 flex items-center justify-center"><Activity className="w-3.5 h-3.5 text-[#f0a500]" /></span>
         <span className="overline text-white/40">Allocation at a glance</span>
       </div>
       <p className="text-white/40 text-xs mb-5">How staked value is spread across our four chains.</p>
       <div className="flex items-center gap-6">
-        <svg viewBox="0 0 100 100" className="w-28 h-28 shrink-0 -rotate-90">
-          <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="12" />
-          {CHAIN_META.map((c, i) => {
-            const len = (C * alloc[i]) / 100;
-            const el = (
-              <circle key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeWidth="12"
-                strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />
-            );
-            offset += len;
-            return el;
-          })}
-        </svg>
-        <div className="space-y-2.5 flex-1">
+        <div className="relative w-28 h-28 shrink-0">
+          <svg viewBox="0 0 100 100" className="w-28 h-28 -rotate-90">
+            <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" />
+            {CHAIN_META.map((c, i) => {
+              const len = (C * alloc[i]) / 100;
+              const thisOffset = offset;
+              offset += len;
+              return (
+                <motion.circle
+                  key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeWidth="11" strokeLinecap="round"
+                  strokeDashoffset={-thisOffset}
+                  initial={{ strokeDasharray: `0 ${C}`, opacity: 0 }}
+                  animate={{ strokeDasharray: `${len} ${C - len}`, opacity: 1 }}
+                  transition={{ duration: 1, delay: 0.2 + i * 0.18, ease: "easeOut" }}
+                />
+              );
+            })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="ff-mono text-base font-bold text-white">4</span>
+            <span className="text-[9px] uppercase tracking-wider text-white/40">chains</span>
+          </div>
+        </div>
+        <div className="space-y-2 flex-1">
           {CHAIN_META.map((c, i) => (
-            <div key={c.key} className="flex items-center justify-between text-sm">
+            <motion.div
+              key={c.key} className="flex items-center justify-between text-sm rounded-md px-2 py-1 -mx-2 hover:bg-white/5 transition-colors"
+              initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.1 }}
+            >
               <span className="flex items-center gap-2 text-white/70">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color, boxShadow: `0 0 8px ${c.color}88` }} />
                 {c.label} · {alloc[i].toFixed(0)}%
               </span>
-              <span className="ff-mono text-white/50 text-xs">${((deposited * alloc[i]) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-            </div>
+              <span className="ff-mono text-white/50 text-xs tabular-nums">${((deposited * alloc[i]) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </motion.div>
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
+
+function StatsBand({ dstats }) {
+  const [open, setOpen] = useState(false);
+  const alloc = dailyAllocation();
+  const rate = 0.008 + (Math.sin(_dayIdx() * 9301 + 49297) * 0.5 + 0.5) * 0.012;
+  const stats = [
+    { v: <CountUp end={dstats.deposited} prefix="$" />, k: "Total deposited", c: "#6c63ff" },
+    { v: <CountUp end={dstats.roiPaid} prefix="$" />, k: "ROI paid out", c: "#00d4a0" },
+    { v: <CountUp end={dstats.wallets} suffix="+" />, k: "Active wallets", c: "#f0a500" },
+    { v: <CountUp end={99.9} decimals={1} suffix="%" />, k: "Uptime", c: "#fff" },
+  ];
+  return (
+    <section className="px-6 py-8">
+      <Reveal>
+        <div
+          className="max-w-6xl mx-auto glass rounded-2xl px-8 pt-10 pb-6 transition-all duration-300 hover:border-[#6c63ff]/30"
+          style={{ borderColor: open ? "rgba(108,99,255,0.3)" : undefined }}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          data-testid="stats-band"
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            {stats.map((s) => (
+              <div key={s.k}>
+                <div className="ff-mono text-2xl md:text-3xl font-bold" style={{ color: s.c }}>{s.v}</div>
+                <div className="overline text-white/40 mt-2">{s.k}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-center gap-1.5 mt-6 text-white/40" data-testid="stats-band-hint">
+            <span className="text-[11px] ff-mono uppercase tracking-wider">{open ? "Network breakdown" : "Hover for network breakdown"}</span>
+            <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.3 }}><ChevronDown className="w-4 h-4" /></motion.span>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div
+                key="breakdown"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.35, ease: "easeInOut" }}
+                className="overflow-hidden"
+                data-testid="stats-breakdown"
+              >
+                <div className="border-t border-white/10 mt-5 pt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {CHAIN_META.map((c, i) => {
+                    const amt = (dstats.deposited * alloc[i]) / 100;
+                    return (
+                      <motion.div
+                        key={c.key}
+                        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.05 + i * 0.07 }}
+                        className="rounded-xl bg-white/[0.03] border border-white/5 p-4 hover:bg-white/[0.06] transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="flex items-center gap-2">
+                            <NetworkBadge network={c.key} size={26} />
+                            <span className="ff-mono text-sm text-white/70">{c.label}</span>
+                          </span>
+                          <span className="ff-mono text-xs font-bold" style={{ color: c.color }}>{alloc[i].toFixed(0)}%</span>
+                        </div>
+                        <div className="ff-mono text-lg font-bold text-white">
+                          ${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </div>
+                        <div className="h-1.5 rounded-full bg-white/5 mt-3 overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full" style={{ background: c.color }}
+                            initial={{ width: 0 }} animate={{ width: `${alloc[i]}%` }}
+                            transition={{ duration: 0.8, delay: 0.15 + i * 0.07, ease: "easeOut" }}
+                          />
+                        </div>
+                        <div className="text-[11px] text-[#00d4a0]/80 ff-mono mt-2.5">
+                          ~${((amt * rate)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/day staking
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
 
 export default function Landing() {
   const heroRef = useRef(null);
@@ -435,6 +601,25 @@ export default function Landing() {
 
       <PriceTicker />
 
+      {/* LIVE PLATFORM PERFORMANCE */}
+      <section className="max-w-7xl mx-auto px-6 pt-20 pb-10">
+        <Reveal>
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#00d4a0]" /></span>
+            <span className="overline text-[#00d4a0]">Live on CAVI</span>
+          </div>
+          <h2 className="ff-head text-3xl md:text-4xl font-bold mt-3 mb-10 max-w-2xl">Real-time platform performance</h2>
+        </Reveal>
+        <div className="grid md:grid-cols-3 gap-6">
+          <Reveal className="md:col-span-2">
+            <PlatformYield deposited={dstats.deposited} />
+          </Reveal>
+          <Reveal delay={0.12}>
+            <AllocationCard deposited={dstats.deposited} />
+          </Reveal>
+        </div>
+      </section>
+
       {/* HOW */}
       <section id="how" className="max-w-7xl mx-auto px-6 py-24">
         <Reveal>
@@ -459,39 +644,7 @@ export default function Landing() {
       </section>
 
       {/* STATS BAND */}
-      <section className="px-6 py-8">
-        <Reveal>
-          <div className="max-w-6xl mx-auto glass rounded-2xl px-8 py-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {[
-              { v: <CountUp end={dstats.deposited} prefix="$" />, k: "Total deposited", c: "#6c63ff" },
-              { v: <CountUp end={dstats.roiPaid} prefix="$" />, k: "ROI paid out", c: "#00d4a0" },
-              { v: <CountUp end={dstats.wallets} suffix="+" />, k: "Active wallets", c: "#f0a500" },
-              { v: <CountUp end={99.9} decimals={1} suffix="%" />, k: "Uptime", c: "#fff" },
-            ].map((s) => (
-              <div key={s.k}>
-                <div className="ff-mono text-2xl md:text-3xl font-bold" style={{ color: s.c }}>{s.v}</div>
-                <div className="overline text-white/40 mt-2">{s.k}</div>
-              </div>
-            ))}
-          </div>
-        </Reveal>
-      </section>
-
-      {/* LIVE PLATFORM PERFORMANCE */}
-      <section className="max-w-7xl mx-auto px-6 py-16">
-        <Reveal>
-          <span className="overline text-[#00d4a0]">Live on CAVI</span>
-          <h2 className="ff-head text-3xl md:text-4xl font-bold mt-3 mb-10 max-w-2xl">Real-time platform performance</h2>
-        </Reveal>
-        <div className="grid md:grid-cols-3 gap-6">
-          <Reveal className="md:col-span-2">
-            <PlatformYield deposited={dstats.deposited} />
-          </Reveal>
-          <Reveal delay={0.12}>
-            <AllocationCard deposited={dstats.deposited} />
-          </Reveal>
-        </div>
-      </section>
+      <StatsBand dstats={dstats} />
 
       {/* NETWORKS */}
       <section id="networks" className="max-w-7xl mx-auto px-6 py-24">
