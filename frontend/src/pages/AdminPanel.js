@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Users, TrendingUp, ArrowUpFromLine, Wallet, ShieldCheck, Settings as SettingsIcon,
-  LayoutDashboard, Search, Download, Play, Eye, Pause, Check, X, Copy, ArrowLeft, KeyRound, ShieldAlert,
+  LayoutDashboard, Search, Download, Play, Eye, Pause, Check, X, Copy, ArrowLeft, KeyRound, ShieldAlert, Gift,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -14,6 +14,7 @@ const TABS = [
   { id: "users", label: "All Users", icon: Users },
   { id: "roi", label: "ROI Control", icon: TrendingUp },
   { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
+  { id: "referrals", label: "Referrals", icon: Gift },
   { id: "wallets", label: "Deposits & Wallets", icon: Wallet },
   { id: "access", label: "Admin Access", icon: ShieldCheck },
   { id: "security", label: "Security", icon: ShieldAlert },
@@ -43,6 +44,7 @@ export default function AdminPanel() {
   const [roleValue, setRoleValue] = useState("admin");
   const [keyModal, setKeyModal] = useState(null);
   const [fraud, setFraud] = useState([]);
+  const [modeReqs, setModeReqs] = useState([]);
   const [landingDep, setLandingDep] = useState("");
   const isSuper = user?.role === "superadmin";
 
@@ -57,6 +59,7 @@ export default function AdminPanel() {
     setLandingDep(s.displayTotalDeposit != null ? String(s.displayTotalDeposit) : "");
   };
   const loadFraud = async () => setFraud((await api.get("/admin/fraud")).data.flagged);
+  const loadModeReqs = async () => setModeReqs((await api.get("/admin/referral-mode-requests")).data.requests);
 
   useEffect(() => {
     loadStats(); loadUsers();
@@ -65,6 +68,7 @@ export default function AdminPanel() {
     if (tab === "dashboard") { loadStats(); loadAudit(); }
     if (tab === "users" || tab === "roi") loadUsers();
     if (tab === "withdrawals") loadWithdrawals();
+    if (tab === "referrals") loadModeReqs();
     if (tab === "wallets") loadWallets();
     if (tab === "security") loadFraud();
     if (tab === "settings") loadSettings();
@@ -85,6 +89,11 @@ export default function AdminPanel() {
     await api.patch(`/admin/withdrawals/${id}`, { status });
     toast.success(`Withdrawal ${status}`);
     loadWithdrawals(); loadStats();
+  };
+  const actModeReq = async (id, status) => {
+    await api.patch(`/admin/referral-mode-requests/${id}`, { status });
+    toast.success(`Mode change ${status}`);
+    loadModeReqs();
   };
   const runCycle = async () => {
     const { data } = await api.post("/admin/roi/run-cycle");
@@ -316,7 +325,7 @@ export default function AdminPanel() {
                       <td className="p-4 ff-body">{w.username}</td>
                       <td className="p-4 text-white">${w.amount.toLocaleString()}</td>
                       <td className="p-4 text-white/60">${w.netAmount.toLocaleString()}{w.penaltyAmount > 0 && <span className="text-[#ff4757] text-xs"> (-{w.penaltyAmount})</span>}</td>
-                      <td className="p-4 text-white/60">{w.network}</td>
+                      <td className="p-4 text-white/60">{w.network}{w.source === "referral" && <span className="ml-2 text-[10px] uppercase text-[#00d4a0] bg-[#00d4a0]/10 px-1.5 py-0.5 rounded-sm" data-testid={`wd-src-ref-${w.id}`}>referral</span>}</td>
                       <td className="p-4"><span className="text-xs uppercase" style={{ color: { pending: "#f0a500", approved: "#00d4a0", rejected: "#ff4757" }[w.status] }}>{w.status}</span></td>
                       <td className="p-4 text-right">
                         {w.status === "pending" ? (
@@ -329,6 +338,46 @@ export default function AdminPanel() {
                     </tr>
                   ))}
                   {!withdrawals.length && <tr><td colSpan={6} className="p-8 text-center text-white/40">No withdrawal requests.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* REFERRALS — payout mode change requests */}
+        {tab === "referrals" && (
+          <div data-testid="admin-referrals">
+            <h1 className="ff-head text-2xl font-bold mb-2">Referral Mode Requests</h1>
+            <p className="text-white/50 text-sm mb-6">Users request to switch their referral payout schedule between weekly and monthly. Approving applies it immediately; both you and the user are emailed.</p>
+            <div className="glass rounded-xl overflow-x-auto">
+              <table className="w-full text-sm" data-testid="admin-mode-table">
+                <thead>
+                  <tr className="text-white/40 overline text-left border-b border-white/10">
+                    <th className="p-4 font-normal">User</th>
+                    <th className="p-4 font-normal">From</th>
+                    <th className="p-4 font-normal">To</th>
+                    <th className="p-4 font-normal">Status</th>
+                    <th className="p-4 font-normal text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modeReqs.map((r) => (
+                    <tr key={r.id} className="border-b border-white/5 ff-mono" data-testid={`admin-mode-${r.id}`}>
+                      <td className="p-4 ff-body">{r.username}<div className="text-white/40 text-xs">{r.email}</div></td>
+                      <td className="p-4 text-white/60 capitalize">{r.currentMode}</td>
+                      <td className="p-4 text-[#00d4a0] capitalize">{r.requestedMode}</td>
+                      <td className="p-4"><span className="text-xs uppercase" style={{ color: { pending: "#f0a500", approved: "#00d4a0", rejected: "#ff4757" }[r.status] }}>{r.status}</span></td>
+                      <td className="p-4 text-right">
+                        {r.status === "pending" ? (
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => actModeReq(r.id, "approved")} data-testid={`mode-approve-${r.id}`} className="bg-[#00d4a0]/10 text-[#00d4a0] border border-[#00d4a0]/40 rounded-sm px-3 py-1 text-xs flex items-center gap-1"><Check className="w-3 h-3" /> Approve</button>
+                            <button onClick={() => actModeReq(r.id, "rejected")} data-testid={`mode-reject-${r.id}`} className="bg-[#ff4757]/10 text-[#ff4757] border border-[#ff4757]/40 rounded-sm px-3 py-1 text-xs flex items-center gap-1"><X className="w-3 h-3" /> Reject</button>
+                          </div>
+                        ) : <span className="text-white/20 text-xs">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {!modeReqs.length && <tr><td colSpan={5} className="p-8 text-center text-white/40">No referral mode requests.</td></tr>}
                 </tbody>
               </table>
             </div>

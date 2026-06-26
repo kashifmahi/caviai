@@ -156,11 +156,11 @@ export default function Overview() {
             </div>
             <div className="min-w-0">
               <h3 className="ff-head font-bold">Invite & earn {Math.round((referral.rate || 0.1) * 100)}%</h3>
-              <p className="text-white/50 text-sm truncate">Earn monthly on every friend who stakes. <span className="ff-mono text-white/70">{referral.referralLink}</span></p>
+              <p className="text-white/50 text-sm truncate">Earn on every friend who stakes. <span className="ff-mono text-white/70">{`${window.location.origin}/signup?ref=${referral.referralCode}`}</span></p>
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            <button onClick={() => copyText(referral.referralLink, "Referral link copied")}
+            <button onClick={() => copyText(`${window.location.origin}/signup?ref=${referral.referralCode}`, "Referral link copied")}
               className="btn-finance rounded-sm px-4 py-2.5 flex items-center gap-2 text-sm" data-testid="overview-referral-copy">
               <Copy className="w-4 h-4" /> Copy link
             </button>

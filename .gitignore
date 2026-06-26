@@ -105,3 +105,4 @@ frontend/node_modules/.cache/default-development/12.pack
 # user uploads (persist on disk, not in git)
 backend/uploads/
 frontend/node_modules/.cache/default-development/7.pack
+frontend/node_modules/.cache/default-development/10.pack

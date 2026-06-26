@@ -61,6 +61,8 @@ LOGIN_MAX_ATTEMPTS = 5
 LOGIN_LOCK_MINUTES = 15
 MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
 REFERRAL_RATE = 0.10  # referrer earns 10% of a referee's monthly staking profit
+REFERRAL_WEEKLY_CAP = 3   # max weekly claims a referrer can make per calendar month
+REFERRAL_WEEK_DAYS = 7
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("cavi")
@@ -305,6 +307,59 @@ def notify_withdrawal(user: dict, wd: dict):
                    f"Withdrawal {amt} ({wd['network']}) by {user.get('username')} needs approval. Review at {link}")
 
 
+def notify_mode_request(user: dict, current: str, requested: str):
+    name = user.get("username", "there")
+    if user.get("email"):
+        html = _email_shell(
+            "We received your referral payout request",
+            f"<p>Hi {name},</p>"
+            f"<p>You asked to switch your referral payout schedule from "
+            f"<b style='color:#fff;'>{current}</b> to <b style='color:#00d4a0;'>{requested}</b>.</p>"
+            f"<p>Our team will review it shortly. We'll email you the moment it's approved — "
+            f"until then your current <b>{current}</b> schedule stays active.</p>"
+            + _btn(f"{FRONTEND_URL}/app/referrals", "View my referrals"),
+        )
+        fire_email(user["email"], "Your referral payout-schedule request is in", html,
+                   f"Your request to switch referral payouts from {current} to {requested} is received and pending admin review.")
+    if ADMIN_NOTIFY_EMAIL:
+        html = _email_shell(
+            "Referral mode-change request",
+            f"<p>A user requested a referral payout-schedule change.</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            + _row("User", f"{user.get('username')} ({user.get('email') or user.get('walletAddress')})")
+            + _row("From", current) + _row("To", requested)
+            + "</table>"
+            + _btn(f"{FRONTEND_URL}/admin" if FRONTEND_URL else "#", "Review in admin panel"),
+        )
+        fire_email(ADMIN_NOTIFY_EMAIL, f"[CAVI] Referral mode change requested by {user.get('username')}", html,
+                   f"{user.get('username')} requested referral payout switch {current} -> {requested}. Review in the admin panel.")
+
+def notify_mode_decision(user: dict, requested: str, status: str):
+    if not user or not user.get("email"):
+        return
+    name = user.get("username", "there")
+    if status == "approved":
+        html = _email_shell(
+            "Your referral schedule was updated",
+            f"<p>Hi {name}, good news — your referral payout schedule is now "
+            f"<b style='color:#00d4a0;'>{requested}</b>. ✅</p>"
+            f"<p>This applies to all future referral reward claims.</p>"
+            + _btn(f"{FRONTEND_URL}/app/referrals", "Go to my referrals"),
+        )
+        fire_email(user["email"], "Referral payout schedule updated ✅", html,
+                   f"Your referral payout schedule is now {requested}.")
+    else:
+        html = _email_shell(
+            "Referral schedule request declined",
+            f"<p>Hi {name}, your request to switch your referral payout schedule to "
+            f"<b>{requested}</b> was not approved this time.</p>"
+            f"<p>Your existing schedule stays in place. Questions? Reply to this email and "
+            f"we'll help out.</p>",
+        )
+        fire_email(user["email"], "Your referral schedule request was declined", html,
+                   f"Your request to switch referral payouts to {requested} was declined. Your current schedule stays active.")
+
+
 # ----------------------------------------------------------------------------
 # Auth dependencies
 # ----------------------------------------------------------------------------
@@ -473,6 +528,12 @@ class ReferralWithdrawReq(BaseModel):
     network: str
     destinationAddress: str
 
+class ReferralModeReq(BaseModel):
+    mode: str  # weekly/monthly
+
+class ModeRequestActionReq(BaseModel):
+    status: str  # approved/rejected
+
 class ToggleReq(BaseModel):
     value: bool
 
@@ -537,16 +598,29 @@ def referral_link(code: str) -> str:
     base = FRONTEND_URL or ""
     return f"{base}/signup?ref={code}"
 
-async def _referee_monthly_roi(referee_id: str) -> dict:
-    """Return {YYYY-MM: total roi amount} for a referee."""
-    out = {}
-    async for r in db.roi.aggregate([
-        {"$match": {"userId": referee_id}},
-        {"$group": {"_id": {"$substr": ["$cycleDate", 0, 7]}, "t": {"$sum": "$amount"}}},
-    ]):
-        if r["_id"]:
-            out[r["_id"]] = round(r["t"], 6)
-    return out
+async def _referee_roi_rows(referee_id: str) -> list:
+    return await db.roi.find({"userId": referee_id}, {"_id": 0, "cycleDate": 1, "amount": 1}).to_list(100000)
+
+def _weekly_windows(roi_rows: list, today) -> list:
+    """Return list of (start_date, end_date, roi_sum) 7-day windows anchored at the
+    referee's first ROI day. The last window may be incomplete (end > today)."""
+    if not roi_rows:
+        return []
+    dates = sorted(r["cycleDate"] for r in roi_rows if r.get("cycleDate"))
+    if not dates:
+        return []
+    anchor = datetime.fromisoformat(dates[0]).date()
+    windows = []
+    start = anchor
+    guard = 0
+    while start <= today and guard < 520:
+        guard += 1
+        end = start + timedelta(days=REFERRAL_WEEK_DAYS)
+        s_iso, e_iso = start.isoformat(), end.isoformat()
+        wsum = sum(r["amount"] for r in roi_rows if s_iso <= r["cycleDate"] < e_iso)
+        windows.append((start, end, round(wsum, 6)))
+        start = end
+    return windows
 
 async def referral_balance(user_id: str) -> dict:
     earned_agg = await db.referral_claims.aggregate(
@@ -564,37 +638,58 @@ async def referral_balance(user_id: str) -> dict:
             "pendingWithdraw": round(pending_wd, 4),
             "balance": round(earned - wd_total - pending_wd, 4)}
 
-async def referral_overview(user: dict) -> dict:
-    """Full referral snapshot for a referrer. Earning continues only while the
-    referee still has a positive balance (hasn't withdrawn everything)."""
-    code = await ensure_referral_code(user)
+async def compute_referral_rewards(user: dict) -> dict:
+    """Shared engine for both overview + claim. Returns claimable 'items' (oldest
+    first, already capped for weekly mode), pending totals and per-referee rows.
+    Earning only counts while a referee still has a positive balance."""
+    mode = user.get("referralMode", "weekly")
     referees = await db.users.find({"referredBy": user["id"]}, {"_id": 0}).to_list(2000)
-    current_month = now_pkt().date().isoformat()[:7]
-    # already-claimed months keyed by (refereeId, month)
-    claimed_map = {}
+    today = now_pkt().date()
+    current_month = today.isoformat()[:7]
+    claimed_periods = set()
+    claimed_by_referee = {}
     async for c in db.referral_claims.find({"referrerId": user["id"]}, {"_id": 0}):
-        claimed_map[(c["refereeId"], c["month"])] = c["amount"]
+        period = c.get("period") or c.get("month")
+        claimed_periods.add((c["refereeId"], period))
+        claimed_by_referee[c["refereeId"]] = round(claimed_by_referee.get(c["refereeId"], 0) + c["amount"], 4)
+    weekly_used = await db.referral_claims.count_documents(
+        {"referrerId": user["id"], "mode": "weekly", "claimMonth": current_month})
 
-    claimable_total = 0.0
+    items = []
+    referee_rows = []
     pending_total = 0.0
     active_count = 0
-    referee_rows = []
     for r in referees:
         fin = await user_financials(r["id"])
-        active = fin["balance"] > 0  # still has money staked
+        active = fin["balance"] > 0
         if active:
             active_count += 1
-        monthly = await _referee_monthly_roi(r["id"])
+        roi_rows = await _referee_roi_rows(r["id"])
         their_claimable = 0.0
         their_pending = 0.0
-        for month, roi_amt in monthly.items():
-            reward = round(roi_amt * REFERRAL_RATE, 4)
-            if month == current_month:
-                their_pending += reward
-            elif (r["id"], month) not in claimed_map and active:
-                their_claimable += reward
-        claimed_from_them = round(sum(v for (rid, _), v in claimed_map.items() if rid == r["id"]), 4)
-        claimable_total += their_claimable
+        if mode == "monthly":
+            buckets = {}
+            for rr in roi_rows:
+                m = rr["cycleDate"][:7]
+                buckets[m] = buckets.get(m, 0) + rr["amount"]
+            for m, amt in buckets.items():
+                reward = round(amt * REFERRAL_RATE, 4)
+                if m >= current_month:
+                    their_pending += reward
+                elif active and reward > 0 and (r["id"], m) not in claimed_periods:
+                    items.append({"refereeId": r["id"], "refereeName": r.get("username") or "User",
+                                  "period": m, "amount": reward, "refereeProfit": round(amt, 4)})
+                    their_claimable += reward
+        else:  # weekly
+            for (wstart, wend, wsum) in _weekly_windows(roi_rows, today):
+                reward = round(wsum * REFERRAL_RATE, 4)
+                period = wstart.isoformat()
+                if wend > today:  # window not yet a full 7 days
+                    their_pending += reward
+                elif active and reward > 0 and (r["id"], period) not in claimed_periods:
+                    items.append({"refereeId": r["id"], "refereeName": r.get("username") or "User",
+                                  "period": period, "amount": reward, "refereeProfit": round(wsum, 4)})
+                    their_claimable += reward
         pending_total += their_pending
         referee_rows.append({
             "username": r.get("username") or "User",
@@ -603,23 +698,51 @@ async def referral_overview(user: dict) -> dict:
             "theirProfit": fin["roiEarned"],
             "claimable": round(their_claimable, 4),
             "pending": round(their_pending, 4),
-            "claimed": claimed_from_them,
+            "claimed": claimed_by_referee.get(r["id"], 0),
         })
+
+    items.sort(key=lambda x: x["period"])
+    if mode == "weekly":
+        remaining = max(0, REFERRAL_WEEKLY_CAP - weekly_used)
+        claimable_items = items[:remaining]
+    else:
+        claimable_items = items
+    return {
+        "mode": mode,
+        "items": claimable_items,
+        "hasUncapped": len(items) > 0,
+        "pendingTotal": round(pending_total, 4),
+        "activeCount": active_count,
+        "refereeRows": referee_rows,
+        "weeklyUsed": weekly_used,
+        "refereesCount": len(referees),
+    }
+
+async def referral_overview(user: dict) -> dict:
+    code = await ensure_referral_code(user)
+    data = await compute_referral_rewards(user)
     bal = await referral_balance(user["id"])
     claims = await db.referral_claims.find({"referrerId": user["id"]}, {"_id": 0}).sort("claimedAt", -1).to_list(200)
+    pending_req = await db.referral_mode_requests.find_one(
+        {"userId": user["id"], "status": "pending"}, {"_id": 0})
     return {
         "referralCode": code,
         "referralLink": referral_link(code),
         "rate": REFERRAL_RATE,
-        "referredCount": len(referees),
-        "activeCount": active_count,
-        "claimable": round(claimable_total, 4),
-        "pendingThisMonth": round(pending_total, 4),
+        "mode": data["mode"],
+        "weeklyCap": REFERRAL_WEEKLY_CAP,
+        "weeklyUsed": data["weeklyUsed"],
+        "weeklyRemaining": max(0, REFERRAL_WEEKLY_CAP - data["weeklyUsed"]),
+        "modeChangeRequest": pending_req,
+        "referredCount": data["refereesCount"],
+        "activeCount": data["activeCount"],
+        "claimable": round(sum(i["amount"] for i in data["items"]), 4),
+        "pendingThisMonth": data["pendingTotal"],
         "earned": bal["earned"],
         "withdrawn": bal["withdrawn"],
         "pendingWithdraw": bal["pendingWithdraw"],
         "balance": bal["balance"],
-        "referees": referee_rows,
+        "referees": data["refereeRows"],
         "claims": claims,
     }
 
@@ -679,6 +802,7 @@ async def verify_otp(body: VerifyOtpReq):
         "emailVerified": True,
         "referralCode": await unique_referral_code(),
         "referredBy": referred_by,
+        "referralMode": "weekly",
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(dict(doc))
@@ -898,6 +1022,7 @@ async def wallet_login(body: WalletVerifyReq):
             "depositCount": 0, "securityFlag": False,
             "referralCode": await unique_referral_code(),
             "referredBy": referred_by,
+            "referralMode": "weekly",
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
         await db.users.insert_one(dict(user))
@@ -1139,39 +1264,57 @@ async def my_referrals(user: dict = Depends(get_current_user)):
 
 @api.post("/referrals/claim")
 async def claim_referrals(user: dict = Depends(get_current_user)):
-    referees = await db.users.find({"referredBy": user["id"]}, {"_id": 0}).to_list(2000)
-    current_month = now_pkt().date().isoformat()[:7]
-    claimed = set()
-    async for c in db.referral_claims.find({"referrerId": user["id"]}, {"_id": 0, "refereeId": 1, "month": 1}):
-        claimed.add((c["refereeId"], c["month"]))
+    data = await compute_referral_rewards(user)
+    mode = data["mode"]
+    if mode == "weekly" and data["weeklyUsed"] >= REFERRAL_WEEKLY_CAP:
+        raise HTTPException(status_code=400,
+            detail=f"You can only claim {REFERRAL_WEEKLY_CAP} times per month on weekly mode. Please try again next month.")
+    items = data["items"]
+    if not items:
+        if mode == "weekly":
+            raise HTTPException(status_code=400, detail="Nothing to claim yet. Weekly rewards unlock after a referee completes a full 7-day staking week.")
+        raise HTTPException(status_code=400, detail="Nothing to claim yet. Monthly rewards become claimable after each full month.")
     now_iso = datetime.now(timezone.utc).isoformat()
+    claim_month = now_pkt().date().isoformat()[:7]
+    batch_id = str(uuid.uuid4())
     new_claims = []
     total = 0.0
-    for r in referees:
-        fin = await user_financials(r["id"])
-        if fin["balance"] <= 0:  # referee withdrew everything — earning stopped
-            continue
-        monthly = await _referee_monthly_roi(r["id"])
-        for month, roi_amt in monthly.items():
-            if month >= current_month:
-                continue  # only completed months are claimable
-            if (r["id"], month) in claimed:
-                continue
-            reward = round(roi_amt * REFERRAL_RATE, 4)
-            if reward <= 0:
-                continue
-            new_claims.append({
-                "id": str(uuid.uuid4()), "referrerId": user["id"], "refereeId": r["id"],
-                "refereeName": r.get("username") or "User", "month": month,
-                "refereeMonthlyProfit": round(roi_amt, 4), "amount": reward,
-                "claimedAt": now_iso,
-            })
-            total += reward
-    if not new_claims:
-        raise HTTPException(status_code=400, detail="Nothing to claim yet. Rewards become claimable after each full month.")
+    for it in items:
+        new_claims.append({
+            "id": str(uuid.uuid4()), "referrerId": user["id"], "refereeId": it["refereeId"],
+            "refereeName": it["refereeName"], "mode": mode, "period": it["period"],
+            "month": it["period"][:7], "claimMonth": claim_month,
+            "refereeProfit": it["refereeProfit"], "amount": it["amount"],
+            "batchId": batch_id, "claimedAt": now_iso,
+        })
+        total += it["amount"]
     await db.referral_claims.insert_many(new_claims)
     bal = await referral_balance(user["id"])
-    return {"claimed": round(total, 4), "count": len(new_claims), "balance": bal["balance"]}
+    return {"claimed": round(total, 4), "count": len(new_claims), "balance": bal["balance"],
+            "mode": mode, "weeklyRemaining": max(0, REFERRAL_WEEKLY_CAP - (data["weeklyUsed"] + (len(new_claims) if mode == "weekly" else 0)))}
+
+@api.post("/referrals/mode-request")
+async def request_mode_change(body: ReferralModeReq, user: dict = Depends(get_current_user)):
+    new_mode = (body.mode or "").lower().strip()
+    if new_mode not in ("weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Mode must be 'weekly' or 'monthly'.")
+    current = user.get("referralMode", "weekly")
+    if new_mode == current:
+        raise HTTPException(status_code=400, detail=f"Your referral mode is already {current}.")
+    existing = await db.referral_mode_requests.find_one({"userId": user["id"], "status": "pending"})
+    if existing:
+        raise HTTPException(status_code=400, detail="You already have a pending mode-change request awaiting admin approval.")
+    doc = {
+        "id": str(uuid.uuid4()), "userId": user["id"],
+        "username": user.get("username") or "User", "email": user.get("email"),
+        "currentMode": current, "requestedMode": new_mode, "status": "pending",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "decidedAt": None, "decidedBy": None,
+    }
+    await db.referral_mode_requests.insert_one(dict(doc))
+    doc.pop("_id", None)
+    notify_mode_request(user, current, new_mode)
+    return {"ok": True, "request": doc}
 
 @api.post("/referrals/withdraw")
 async def withdraw_referrals(body: ReferralWithdrawReq, user: dict = Depends(get_current_user)):
@@ -1370,6 +1513,31 @@ async def admin_action_withdrawal(wd_id: str, body: WithdrawalActionReq, admin: 
     notify_withdrawal_decision(target, wd, body.status)
     return {"ok": True}
 
+@api.get("/admin/referral-mode-requests")
+async def admin_mode_requests(admin: dict = Depends(require_admin)):
+    items = await db.referral_mode_requests.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    pending = [i for i in items if i["status"] == "pending"]
+    return {"requests": items, "pendingCount": len(pending)}
+
+@api.patch("/admin/referral-mode-requests/{req_id}")
+async def admin_action_mode_request(req_id: str, body: ModeRequestActionReq, admin: dict = Depends(require_admin)):
+    if body.status not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    req = await db.referral_mode_requests.find_one({"id": req_id})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req["status"] != "pending":
+        raise HTTPException(status_code=400, detail="This request has already been decided.")
+    await db.referral_mode_requests.update_one({"id": req_id}, {"$set": {
+        "status": body.status, "decidedAt": datetime.now(timezone.utc).isoformat(), "decidedBy": admin["id"]}})
+    target = await db.users.find_one({"id": req["userId"]}, {"_id": 0})
+    if body.status == "approved" and target:
+        await db.users.update_one({"id": req["userId"]}, {"$set": {"referralMode": req["requestedMode"]}})
+    await write_audit(admin["id"], f"referral_mode_{body.status}", req["userId"],
+                      f"Referral mode {req['currentMode']}->{req['requestedMode']} {body.status} for {req.get('username')}")
+    notify_mode_decision(target, req["requestedMode"], body.status)
+    return {"ok": True}
+
 @api.post("/admin/roi/run-cycle")
 async def admin_run_cycle(admin: dict = Depends(require_admin)):
     count = await run_roi_cycle(manual=True)
@@ -1504,7 +1672,13 @@ async def startup():
     await db.password_reset_tokens.create_index("expiresAt", expireAfterSeconds=3600)
     await db.users.create_index("referralCode", sparse=True)
     await db.users.create_index("referredBy", sparse=True)
-    await db.referral_claims.create_index([("referrerId", 1), ("refereeId", 1), ("month", 1)], unique=True)
+    try:
+        await db.referral_claims.drop_index("referrerId_1_refereeId_1_month_1")
+    except Exception:
+        pass
+    await db.referral_claims.create_index([("referrerId", 1), ("refereeId", 1), ("period", 1)], unique=True)
+    await db.referral_claims.create_index([("referrerId", 1), ("mode", 1), ("claimMonth", 1)])
+    await db.referral_mode_requests.create_index([("userId", 1), ("status", 1)])
     await seed_admin()
     await get_settings()
     asyncio.create_task(roi_scheduler())

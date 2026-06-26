@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 12 — Tested CAVI enhanced referral system (weekly + monthly modes, 3/month cap, mode-change request flow, admin approve/reject) end-to-end. Backend: 21/21 pytest cases pass (auth regression for admin+user+register-otp, overview defaults with weeklyCap=3/weeklyUsed=0/modeChangeRequest=null, weekly windows math claimable=35 (oldest 3 of 4 windows), 3 referral_claims rows with mode='weekly' periods=W1/W2/W3 dates and claimMonth=current PKT month, 4th-claim blocked with 'only ... 3 times', balance gating drops claimable to 0, monthly mode claimable=40 (March 300 + April 100)*0.10, monthly creates rows with period='YYYY-MM' and no cap, mode-request guards same-mode/duplicate-pending, admin lists+approves flips mode and emails sent, reject leaves mode unchanged, already-decided 400, referral pocket withdrawal does not touch main balance, over-withdraw 400). Frontend: 13/13 Playwright checks pass on /app/referrals (mode card + Weekly active + 'request switch to Monthly' link + pending banner appears after request + weekly cap info '0/3' + referral link starts with window.location.origin and contains '/signup?ref=' + claim and withdraw buttons) and admin panel (admin-tab-referrals + admin-mode-table + mode-approve/mode-reject buttons + approve through UI works + wd-src-ref-{id} selector present in withdrawals table).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_referrals_weekly_monthly.py",
+    "/app/test_reports/pytest/iter12_referrals_weekly.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "compute_referral_rewards (server.py:641) does N+1 Mongo work per referee (user_financials + roi fetch). Fine at this scale, but consider $lookup aggregation if referees-per-user grows beyond a few hundred.",
+    "_weekly_windows uses a sequential while-loop from anchor to today (capped at 520 iterations). For a referee whose first roi cycleDate is years in the past with no recent activity, this still iterates through every week — acceptable bound but worth caching the anchor.",
+    "Weekly cap is computed via count_documents on (referrerId, mode='weekly', claimMonth=current_month). Index (referrerId, mode, claimMonth) is created at startup (server.py:1680) — good.",
+    "Mode-change request creates only one pending row (existing-pending guard). Admin approve sets user.referralMode atomically; reject does NOT revert anything — correct per spec.",
+    "Referral withdrawals are independent of the main balance via source='referral' filter on aggregations (server.py:629-635, user_financials excludes source=referral). Confirmed in tests."
+  ],
+  "updated_files": ["/app/backend/tests/test_referrals_weekly_monthly.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% (13/13)"},
+  "test_credentials": "Used /app/memory/test_credentials.md (superadmin@cavi.io / Cavi@Admin2025, hajraanwar157@gmail.com / NewCavi@2026).",
+  "seed_data_creation": "Seeded via Mongo: 3 disposable referee users with id prefix 'test-referee-' (weekly 4-window + drained + monthly) plus roi rows and a draining withdrawal. All seeded docs deleted in fixture teardown. After-frontend cleanup also restored hajraanwar157 referralMode='weekly' and removed any leftover referral_mode_requests / referral_claims / source='referral' withdrawals for that user so the UI is clean for next agent.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend: pytest /app/backend/tests/test_referrals_weekly_monthly.py -v passes 21/21. PKT today is around 2026-06-26; weekly anchor uses 2026-04-01 to keep all 4 windows in the past. The test cleans prior 'test-referee-' rows at start of TestMonthlyClaim seed to isolate monthly math. Frontend testids verified: referrals-page, referral-mode-card, request-mode-monthly, mode-pending-banner, weekly-cap-info, referral-link-input, referral-claim-btn, referral-withdraw-toggle, admin-tab-referrals, admin-mode-table, mode-approve-{id}, mode-reject-{id}, wd-src-ref-{id}. Original_problem_statement's preview backend is fully working; the user's LIVE site cavi.solutions is unrelated infra.",
+  "rca of the issue": "N/A — no bugs found. One transient pytest failure on first monthly run was a test-side data-contamination (prior weekly referees still in DB inflated monthly claimable from 40 to 83); fixed by deleting test-referee-* docs at the start of TestMonthlyClaim's seed fixture."
+}

@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Copy, Gift, Users, Wallet, HandCoins, Clock, Share2, CheckCircle2 } from "lucide-react";
+import { Loader2, Copy, Gift, Users, Wallet, HandCoins, Clock, Share2, CheckCircle2, CalendarDays, CalendarRange, Lock, RefreshCw } from "lucide-react";
 import api, { formatError } from "@/lib/api";
 import { StatCard, copyText } from "@/components/shared";
 
 const NETWORKS = ["ETH", "SOL", "BNB", "TRC20"];
 const money = (v) => `$${Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+const buildLink = (code) => `${window.location.origin}/signup?ref=${code}`;
 
 export default function ReferralsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [showWd, setShowWd] = useState(false);
   const [wdAmount, setWdAmount] = useState("");
   const [wdNetwork, setWdNetwork] = useState("ETH");
@@ -42,6 +44,19 @@ export default function ReferralsPage() {
     }
   };
 
+  const requestMode = async (mode) => {
+    setRequesting(true);
+    try {
+      await api.post("/referrals/mode-request", { mode });
+      toast.success("Request sent to admin for approval");
+      await load();
+    } catch (err) {
+      toast.error(formatError(err.response?.data?.detail) || "Could not send request");
+    } finally {
+      setRequesting(false);
+    }
+  };
+
   const submitWd = async (e) => {
     e.preventDefault();
     setWdLoading(true);
@@ -60,10 +75,11 @@ export default function ReferralsPage() {
   };
 
   const shareLink = () => {
+    const link = buildLink(data.referralCode);
     if (navigator.share) {
-      navigator.share({ title: "Join me on CAVI", url: data.referralLink }).catch(() => {});
+      navigator.share({ title: "Join me on CAVI", url: link }).catch(() => {});
     } else {
-      copyText(data.referralLink, "Referral link copied");
+      copyText(link, "Referral link copied");
     }
   };
 
@@ -72,14 +88,66 @@ export default function ReferralsPage() {
   }
   if (!data) return null;
 
+  const link = buildLink(data.referralCode);
+  const mode = data.mode || "weekly";
+  const pendingReq = data.modeChangeRequest;
+
   return (
     <div className="max-w-5xl" data-testid="referrals-page">
       <span className="overline text-[#00d4a0]">Earn together</span>
       <h1 className="ff-head text-3xl font-bold mt-2 mb-2" data-testid="referrals-title">Referrals</h1>
       <p className="text-white/50 text-sm mb-8 max-w-2xl">
         Invite friends with your link. When someone you refer deposits and keeps their funds staked, you earn{" "}
-        <span className="text-[#00d4a0] font-semibold">{Math.round((data.rate || 0.1) * 100)}% of their monthly staking profit</span> — claimable every month, for as long as they stay active.
+        <span className="text-[#00d4a0] font-semibold">{Math.round((data.rate || 0.1) * 100)}% of their staking profit</span>{" "}
+        — paid out on your chosen schedule below, for as long as they stay active.
       </p>
+
+      {/* Payout schedule (mode) */}
+      <div className="glass rounded-xl p-6 mb-6" data-testid="referral-mode-card">
+        <div className="flex items-center justify-between mb-1">
+          <span className="overline text-white/40">Payout schedule</span>
+          <span className="text-[11px] ff-mono uppercase text-white/40 flex items-center gap-1"><Lock className="w-3 h-3" /> locked</span>
+        </div>
+        <p className="text-white/40 text-xs mb-4">Pick how often you collect. Changing it needs admin approval — like wallet generation, it can't be flipped freely.</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {[
+            { id: "weekly", icon: CalendarDays, title: "Weekly", desc: "Claim after each full 7-day staking week. Max 3 claims per month." },
+            { id: "monthly", icon: CalendarRange, title: "Monthly", desc: "Claim once per completed calendar month for that month's profit." },
+          ].map((m) => {
+            const isActive = mode === m.id;
+            return (
+              <div key={m.id} data-testid={`mode-card-${m.id}`}
+                className={`rounded-lg p-4 border transition-all ${isActive ? "border-[#00d4a0]/50 bg-[#00d4a0]/5" : "border-white/10 bg-white/[0.02] opacity-70"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="flex items-center gap-2 font-semibold"><m.icon className="w-4 h-4" style={{ color: isActive ? "#00d4a0" : "#94a3b8" }} /> {m.title}</span>
+                  {isActive
+                    ? <span className="text-[10px] ff-mono uppercase text-[#00d4a0] bg-[#00d4a0]/10 px-2 py-0.5 rounded-sm">active</span>
+                    : <span className="text-[10px] ff-mono uppercase text-white/40 flex items-center gap-1"><Lock className="w-3 h-3" /></span>}
+                </div>
+                <p className="text-xs text-white/50">{m.desc}</p>
+                {!isActive && !pendingReq && (
+                  <button onClick={() => requestMode(m.id)} disabled={requesting}
+                    className="mt-3 text-xs flex items-center gap-1.5 text-[#6c63ff] hover:underline disabled:opacity-50" data-testid={`request-mode-${m.id}`}>
+                    {requesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    Request switch to {m.title}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {pendingReq && (
+          <div className="mt-4 flex items-center gap-2 rounded-sm border border-[#f0a500]/40 bg-[#f0a500]/5 px-4 py-2.5 text-sm text-white/70" data-testid="mode-pending-banner">
+            <Clock className="w-4 h-4 text-[#f0a500] shrink-0" />
+            Your request to switch to <span className="ff-mono text-[#f0a500] capitalize">{pendingReq.requestedMode}</span> is pending admin approval.
+          </div>
+        )}
+        {mode === "weekly" && !pendingReq && (
+          <div className="mt-4 text-xs text-white/40 ff-mono" data-testid="weekly-cap-info">
+            Weekly claims used this month: <span className="text-white/70">{data.weeklyUsed}/{data.weeklyCap}</span>
+          </div>
+        )}
+      </div>
 
       {/* Referral link */}
       <div className="glass rounded-xl p-6 mb-6" data-testid="referral-link-card">
@@ -89,13 +157,13 @@ export default function ReferralsPage() {
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <input
-            readOnly value={data.referralLink}
+            readOnly value={link}
             className="inp flex-1 rounded-sm px-4 py-3 text-sm ff-mono text-white/70"
             data-testid="referral-link-input"
             onFocus={(e) => e.target.select()}
           />
           <div className="flex gap-2">
-            <button onClick={() => copyText(data.referralLink, "Referral link copied")}
+            <button onClick={() => copyText(link, "Referral link copied")}
               className="btn-finance rounded-sm px-4 py-3 flex items-center justify-center gap-2 text-sm" data-testid="referral-copy-btn">
               <Copy className="w-4 h-4" /> Copy
             </button>
@@ -115,9 +183,9 @@ export default function ReferralsPage() {
         <StatCard label="People referred" value={data.referredCount} accent="#6c63ff"
           sub={`${data.activeCount} active`} testId="stat-referred" icon={<Users className="w-4 h-4 text-white/30" />} />
         <StatCard label="Claimable now" value={money(data.claimable)} accent="#00d4a0"
-          sub="Completed months" testId="stat-claimable" icon={<HandCoins className="w-4 h-4 text-white/30" />} />
-        <StatCard label="Pending this month" value={money(data.pendingThisMonth)} accent="#f0a500"
-          sub="Claimable next month" testId="stat-pending" icon={<Clock className="w-4 h-4 text-white/30" />} />
+          sub={mode === "weekly" ? "Completed weeks" : "Completed months"} testId="stat-claimable" icon={<HandCoins className="w-4 h-4 text-white/30" />} />
+        <StatCard label="Pending" value={money(data.pendingThisMonth)} accent="#f0a500"
+          sub={mode === "weekly" ? "Current week (in progress)" : "This month"} testId="stat-pending" icon={<Clock className="w-4 h-4 text-white/30" />} />
         <StatCard label="Referral balance" value={money(data.balance)} accent="#ffffff"
           sub={`${money(data.earned)} earned all-time`} testId="stat-ref-balance" icon={<Wallet className="w-4 h-4 text-white/30" />} />
       </div>
