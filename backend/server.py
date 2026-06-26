@@ -6,6 +6,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import asyncio
+import hashlib
 import logging
 import random
 import re
@@ -56,6 +57,8 @@ UPLOAD_DIR = ROOT_DIR / "uploads" / "avatars"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 AVATAR_EXTS = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCK_MINUTES = 15
 MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -103,6 +106,7 @@ def public_user(doc: dict) -> dict:
     doc = dict(doc)
     doc.pop("_id", None)
     doc.pop("password", None)
+    doc.pop("knownDevices", None)
     return doc
 
 # ----------------------------------------------------------------------------
@@ -643,15 +647,67 @@ async def reset_password(body: ResetPasswordReq):
                    f"Your CAVI password was changed. If this wasn't you, contact {SUPPORT_EMAIL} immediately.")
     return {"ok": True}
 
+def _client_ip(request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def _device_key(user_agent: str) -> str:
+    return hashlib.sha256((user_agent or "unknown").encode()).hexdigest()[:16]
+
+async def _check_login_lock(email: str):
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(minutes=LOGIN_LOCK_MINUTES)
+    attempts = [a async for a in db.login_attempts.find(
+        {"email": email, "ts": {"$gt": window_start}}).sort("ts", 1)]
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        oldest = attempts[0]["ts"]
+        if oldest.tzinfo is None:
+            oldest = oldest.replace(tzinfo=timezone.utc)
+        retry = max(1, int(((oldest + timedelta(minutes=LOGIN_LOCK_MINUTES)) - now).total_seconds() // 60) + 1)
+        raise HTTPException(status_code=429,
+                            detail=f"Too many failed attempts. Please try again in about {retry} minute(s).")
+
+async def _maybe_notify_new_device(user: dict, request):
+    if not user.get("email"):
+        return
+    ua = request.headers.get("user-agent", "unknown")
+    ip = _client_ip(request)
+    key = _device_key(ua)
+    known = user.get("knownDevices") or []
+    if key in known:
+        return
+    await db.users.update_one({"id": user["id"]}, {"$addToSet": {"knownDevices": key}})
+    if len(known) == 0:  # first device ever — don't email
+        return
+    when = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
+    html = _email_shell(
+        "New sign-in to your CAVI account",
+        f"<p>Hi {user.get('username','there')},</p>"
+        f"<p>We noticed a sign-in to your CAVI account from a device we haven't seen before.</p>"
+        f"<table style='margin:16px 0;font-size:14px;'>"
+        + _row("When", when) + _row("IP address", ip) + _row("Device", ua[:120])
+        + "</table>"
+        f"<p>If this was you, you're all set. If you don't recognise this, change your password right away "
+        f"and contact us at {SUPPORT_EMAIL}.</p>",
+    )
+    fire_email(user["email"], "New sign-in to your CAVI account", html,
+               f"New sign-in to your CAVI account on {when} from {ip}. If this wasn't you, change your password and contact {SUPPORT_EMAIL}.")
+
 @api.post("/auth/login")
-async def login(body: LoginReq):
+async def login(body: LoginReq, request: Request):
     email = body.email.lower()
+    await _check_login_lock(email)
     user = await db.users.find_one({"email": email})
     if not user or not user.get("password") or not verify_password(body.password, user["password"]):
+        await db.login_attempts.insert_one({"email": email, "ip": _client_ip(request), "ts": datetime.now(timezone.utc)})
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    await db.login_attempts.delete_many({"email": email})
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.users.update_one({"id": user["id"]}, {"$set": {"lastLoginAt": now_iso}})
     user["lastLoginAt"] = now_iso
+    await _maybe_notify_new_device(user, request)
     return {"token": create_access_token(user["id"]), "user": public_user(user)}
 
 @api.post("/auth/wallet-nonce")
@@ -1244,6 +1300,8 @@ async def startup():
     await db.users.create_index("id", unique=True)
     await db.users.create_index("walletAddress", sparse=True)
     await db.auth_nonces.create_index("expiresAt", expireAfterSeconds=0)
+    await db.login_attempts.create_index("ts", expireAfterSeconds=LOGIN_LOCK_MINUTES * 60)
+    await db.login_attempts.create_index("email")
     await db.pending_registrations.create_index("email", unique=True)
     await db.pending_registrations.create_index("createdAt", expireAfterSeconds=3600)
     await db.password_reset_tokens.create_index("token", unique=True)
