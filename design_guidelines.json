@@ -1,103 +1,111 @@
 {
-  "project_identity": {
-    "name": "CAVI",
-    "domain": "Crypto Investment Platform",
-    "theme": "dark",
-    "archetype": "Archetype 5 (Luxury) blended with Pro Terminal (Crypto/Web3)",
-    "design_philosophy": "A premium, high-trust fintech aesthetic. Rejects generic 'tech-bro neon' by grounding the UI in deep, cinematic darkness with sharp, high-contrast data visualization. Information architecture mimics high-end trading terminals."
-  },
-  "colors": {
-    "background": {
-      "base": "#05080f",
-      "surface": "#0a0f1a",
-      "surface_elevated": "#121a2f"
-    },
-    "accents": {
-      "purple": "#6c63ff",
-      "green": "#00d4a0",
-      "gold": "#f0a500",
-      "red": "#ff4757"
-    },
-    "text": {
-      "primary": "#ffffff",
-      "secondary": "#94a3b8",
-      "muted": "#475569"
-    },
-    "borders": {
-      "subtle": "rgba(255, 255, 255, 0.06)",
-      "focus": "#6c63ff"
-    },
-    "strategy": {
-      "purple_usage": "CRITICAL: Do not use purple (#6c63ff) for primary Call-to-Action buttons. Use it strictly for ambient glows, active states on subtle elements, and decorative 'Tracing Beam' borders. Avoids the 'purple CTA' anti-pattern.",
-      "green_usage": "Use #00d4a0 for primary financial actions (Deposit, Invest), positive ROI numbers, and success states.",
-      "gold_usage": "Use #f0a500 for wealth-oriented highlights (e.g., 'Grow Your Wealth' accents, premium tiers, projected ROI numbers).",
-      "red_usage": "Use #ff4757 for withdrawals, negative trends, and destructive admin actions."
-    }
+  "project_name": "CAVI Crypto Dashboard",
+  "theme": "dark",
+  "archetype": "5",
+  "archetype_name": "Luxury Tech with Electric Accents",
+  "color_palette": {
+    "background": "#05080f",
+    "surface_glass": "rgba(255, 255, 255, 0.02)",
+    "surface_solid": "#0a0e1a",
+    "border_subtle": "rgba(255, 255, 255, 0.08)",
+    "border_active": "rgba(255, 255, 255, 0.15)",
+    "primary_glow": "#6c63ff",
+    "primary_hover": "#8078ff",
+    "text_primary": "#ffffff",
+    "text_secondary": "rgba(255, 255, 255, 0.6)",
+    "text_muted": "rgba(255, 255, 255, 0.4)",
+    "success": "#10B981",
+    "danger": "#EF4444",
+    "warning": "#F59E0B"
   },
   "typography": {
-    "fonts": {
-      "heading": "Unbounded, sans-serif",
-      "body": "Satoshi, sans-serif",
-      "mono": "JetBrains Mono, monospace"
-    },
-    "rules": {
-      "h1": "text-5xl md:text-6xl+ font-black tracking-tighter leading-none. Never center by default; use left-aligned asymmetric layouts.",
-      "h2": "text-3xl md:text-4xl font-bold tracking-tight.",
-      "body": "text-base leading-relaxed text-[#94a3b8].",
-      "data": "CRITICAL: All crypto prices, wallet addresses, ROI percentages, and table numerics MUST use JetBrains Mono (tracking-tight) to evoke a 'pro terminal' feel.",
-      "overlines": "text-xs font-mono uppercase tracking-[0.2em] text-[#6c63ff] or #f0a500."
-    }
+    "strategy": "Swiss Brutalist meets Web3",
+    "font_heading": "Outfit",
+    "font_body": "IBM Plex Sans",
+    "font_mono": "JetBrains Mono",
+    "rules": [
+      "NO INTER FOR HEADINGS.",
+      "Use JetBrains Mono for ALL numeric data (balances, ROI, wallet addresses) for alignment and a 'Bloomberg-terminal' precision feel.",
+      "Headlines (H1/H2) must have tracking-tight (-0.025em).",
+      "Overlines/Labels must be uppercase, text-xs, tracking-[0.2em], text-secondary."
+    ]
   },
   "spacing_and_layout": {
-    "global": "Generous Spacing Philosophy. Tailwind Scale: p-6, p-8, p-12, p-24.",
-    "marketing_pages": "Mode A: The 'Tetris' Grid. Base: grid-cols-1 md:grid-cols-12 gap-8. Span logic: Hero spanning 8 cols, calculators spanning 4 cols. Assymetry is mandatory.",
-    "dashboard_and_admin": "Mode B: The 'Control Room' Grid. Dense, data-heavy. Base: grid-cols-1 md:grid-cols-4 gap-4. Every pixel utilized. h-full on children.",
-    "alignment": "Left-align dense content and headings. Never center unless explicitly necessary for an isolated component."
-  },
-  "surface_strategies": {
-    "hero_overlay": "Max overlay opacity bg-[#05080f]/80 to 90%. Must let abstract backgrounds breathe while maintaining APCA text contrast.",
-    "dashboard_cards": "Glassmorphism (The 'Crystal' Variant). bg-[#0a0f1a]/60 backdrop-blur-2xl border-t border-l border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]. Radius: rounded-xl.",
-    "admin_tables": "Grid Borders (The 'Technical' Look). border-collapse, expose the skeleton. border-b border-white/5 on all rows. No soft shadows inside the admin control panel.",
-    "noise_texture": "Apply a subtle SVG noise overlay across the global background to kill 'digital flatness'."
+    "strategy": "The 'Control Room' Grid (Dense, Data Correlation, Scanability)",
+    "dashboard_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "padding_rules": "Generous internal padding. Cards must use p-6 or p-8.",
+    "alignment": "Optical alignment over geometrical. Left-align dense data.",
+    "mobile": "Mobile-first responsive grids. Max image/chart heights."
   },
   "components": {
-    "buttons": {
-      "primary_finance": "bg-[#00d4a0]/10 text-[#00d4a0] border border-[#00d4a0]/40 hover:bg-[#00d4a0] hover:text-[#05080f] transition-all duration-300 rounded-sm font-mono uppercase text-sm tracking-wider.",
-      "web3_wallet": "bg-[#121a2f] text-white border border-white/10 hover:border-[#6c63ff]/50 hover:bg-[#121a2f]/80 flex items-center justify-between px-4 py-3 rounded-lg backdrop-blur-md.",
-      "admin_action": "bg-white/5 text-white hover:bg-white/10 text-xs px-3 py-1 rounded-sm."
+    "cards": {
+      "style": "Glassmorphism (The 'Crystal' Variant)",
+      "classes": "bg-white/[0.02] backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-sm overflow-hidden",
+      "hover": "hover:border-white/[0.15] hover:bg-white/[0.04] transition-all duration-300"
     },
-    "inputs": "Shadcn highly customized. bg-[#0a0f1a] border-white/10 focus:border-[#6c63ff] focus:ring-1 focus:ring-[#6c63ff]/50 rounded-sm font-mono placeholder:text-white/20.",
-    "charts": "Recharts. Remove grid lines entirely or use stroke='rgba(255,255,255,0.02)'. Use glowing drop-shadows on the line paths. Area charts should use a gradient from #00d4a0 to transparent.",
-    "toggles": "Shadcn Switch. Custom active color: bg-[#00d4a0]."
+    "buttons": {
+      "primary": "bg-[#6c63ff] text-white rounded-lg px-6 py-3 font-medium shadow-[0_0_20px_rgba(108,99,255,0.25)] hover:shadow-[0_0_30px_rgba(108,99,255,0.45)] transition-all",
+      "secondary": "bg-white/[0.05] border border-white/[0.1] text-white hover:bg-white/[0.1] rounded-lg px-6 py-3 transition-all",
+      "animated_wrapper": "Use <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}> around the button."
+    },
+    "inputs_and_forms": {
+      "style": "Dark, focused, accessible",
+      "classes": "bg-[#0a0e1a] border border-white/[0.1] rounded-lg text-white placeholder:text-white/30 focus:border-[#6c63ff] focus:ring-1 focus:ring-[#6c63ff] transition-all"
+    },
+    "charts": {
+      "library": "recharts",
+      "roi_chart": "AreaChart. Gradient fill (from #6c63ff opacity 0.4 to 0). Stroke #6c63ff width 2. Remove grid lines except faint horizontal (strokeDasharray 3 3, stroke white/5). Custom dark tooltip.",
+      "network_chart": "Donut (PieChart) with innerRadius 60, outerRadius 80. Custom colors per network (e.g., ETH #627EEA, SOL #14F195, BNB #F3BA2F, TRON #FF0013). Dark tooltip."
+    }
   },
-  "motion_and_interactions": {
-    "hero": "Framer Motion: Staggered text reveal (y: 20, opacity: 0 -> y: 0, opacity: 1).",
-    "ticker": "The 'Editorial Ribbon'. react-fast-marquee. Very slow, smooth drift. JetBrains Mono. Green/Red text depending on ticker symbol.",
-    "hover_states": "Cards lift slightly (-translate-y-1). 'Tracing Beam' effect on ROI calculator borders using Framer Motion or gradient masks.",
-    "accessibility": "respect prefers-reduced-motion."
+  "pages": {
+    "dashboard_overview": {
+      "layout": "Grid-based. Top row: 4 Stat Cards (Total Balance, Deposits, ROI, Withdrawn). Second row: Main ROI Area Chart (col-span-1 md:col-span-3) + Network Deposits Donut (col-span-1 md:col-span-1). Third row: Recent Activity or Wallets list.",
+      "interactions": "Stat cards must have Framer Motion staggered entrance animations."
+    },
+    "user_settings": {
+      "layout": "Left Sidebar Navigation pattern. grid-cols-1 md:grid-cols-12 gap-8. Sidebar (col-span-1 md:col-span-3) for nav links (Profile, Security, Preferences). Main content (col-span-1 md:col-span-9).",
+      "profile_section": "Avatar upload at top (circular, 100x100, edit overlay on hover), followed by a grid for form fields (Display Name, Short Bio, Email/Wallet address).",
+      "actions": "Sticky or prominent 'Save Changes' animated button at the bottom."
+    }
+  },
+  "animation_motion": {
+    "libraries": "framer-motion",
+    "page_transitions": "initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}",
+    "staggered_lists": "Use variants to stagger children rendering by 0.1s.",
+    "micro_interactions": "All buttons and clickable cards scale down slightly on tap."
   },
   "media": {
     "images": [
       {
-        "category": "hero_background",
-        "url": "https://images.pexels.com/photos/13156181/pexels-photo-13156181.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-        "description": "Dark abstract close-up of illuminated geometric metallic shapes. Apply heavy dark overlay (#05080f/85)."
+        "category": "background_effect",
+        "url": "https://images.unsplash.com/photo-1637825891028-564f672aa42c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdsb3dpbmclMjB3YXZlcyUyMGRhcmslMjBwdXJwbGV8ZW58MHx8fHwxNzgyNDY4ODIzfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract glowing purple wave. Use as a fixed, low-opacity (10-20%) background blur or blend-mode overlay to kill 'digital flatness'."
       },
       {
-        "category": "marketing_abstract_1",
-        "url": "https://images.pexels.com/photos/26559580/pexels-photo-26559580.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-        "description": "Artistic blend of geometric shapes in purple/blue tones. Use for the 'Supported Networks' section background or auth page split-screen with high blur and heavy dark overlay."
+        "category": "default_avatar",
+        "url": "https://images.unsplash.com/photo-1740252117044-2af197eea287?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxibGFuayUyMDNkJTIwYXZhdGFyJTIwcHJvZmlsZSUyMHBpY3R1cmV8ZW58MHx8fHwxNzgyNDY4ODIzfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Default 3D avatar profile picture for the user settings page."
       }
-    ],
-    "icons_strategy": "Use react-icons/fa or react-icons/si for Web3 networks (Ethereum, Solana, BNB, Tron). Use lucide-react for standard dashboard actions (wallets, admin, charts)."
-  },
-  "pages_instructions": {
-    "landing_page": "Hero: 'Grow Your Wealth With CAVI' in Unbounded font, left-aligned, overlapping the hero_background. Live crypto ticker (marquee) separating the hero and next section. ROI Calculator: Neumorphic/Crystal glass card on the right side of the bento grid. Supported Networks: display as tall/square bento items with subtle hover glows.",
-    "auth_pages": "Split screen layout. Left: marketing_abstract_1 with glassmorphism quote card. Right: Auth forms. Connect Wallet buttons stacked above standard Email/Pass fields.",
-    "user_dashboard": "Sidebar nav. Wallets Page: 'Generate Address' button reveals string in JetBrains Mono. ROI Page: Large top stat (Today's Rate in Gold/Green), Recharts 30-day area chart below. Empty state uses dashed borders and 'No Deposits Yet'. Withdrawals Page: strict, terminal-like form.",
-    "admin_panel": "Dense layout. Header with global stats. 'All Users' table with Shadcn toggles for admin status. 'ROI Control' inputs to manually override rates. Withdrawals management table with Approve/Reject actions in Green/Red."
+    ]
   },
   "testing": {
-    "attributes": "CRITICAL: All interactive and key informational elements MUST include a data-testid attribute. Example: data-testid='login-submit-button', data-testid='roi-calculator-slider'."
-  }
+    "rules": "All interactive and key informational elements MUST include a 'data-testid' attribute.",
+    "examples": [
+      "data-testid='settings-save-button'",
+      "data-testid='profile-name-input'",
+      "data-testid='stat-card-roi'"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Install required dependencies: `yarn add framer-motion recharts @phosphor-icons/react`.",
+    "Use Phosphor Icons (`@phosphor-icons/react`) for sharp, high-end dashboard iconography.",
+    "Set up Tailwind CSS configuration to include the custom colors and fonts (Outfit, IBM Plex Sans, JetBrains Mono). Add imports for these fonts.",
+    "Build the Dashboard Overview layout using a responsive CSS Grid ('Control Room' bento style). Implement Recharts for the AreaChart (ROI) and DonutChart (Deposits).",
+    "Build the User Settings/Profile page with a sidebar navigation layout and an avatar upload section.",
+    "Apply Framer Motion for page mounts, stat card staggered entrances, and button tap/hover effects.",
+    "Use Shadcn UI components for forms/inputs, but heavily customize them via Tailwind to match the dark glassmorphism aesthetic.",
+    "Ensure every single interactive element has a `data-testid`.",
+    "Do NOT break existing routing logic. Integrate UI enhancements over existing data flows."
+  ]
 }

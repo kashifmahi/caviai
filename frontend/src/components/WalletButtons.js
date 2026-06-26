@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, Wallet } from "lucide-react";
 import { useAppKit, useAppKitAccount, useAppKitProvider, useAppKitState } from "@reown/appkit/react";
+import { useSignMessage } from "wagmi";
 import { useAuth } from "@/context/AuthContext";
 import { formatError } from "@/lib/api";
 import { base58encode } from "@/lib/web3";
@@ -23,8 +24,8 @@ export default function WalletButtons() {
   const { open } = useAppKit();
   const { open: modalOpen } = useAppKitState();
   const { address, isConnected, caipAddress } = useAppKitAccount();
-  const { walletProvider: evmProvider } = useAppKitProvider("eip155");
   const { walletProvider: solProvider } = useAppKitProvider("solana");
+  const { signMessageAsync } = useSignMessage();
   const [busy, setBusy] = useState(false);
   const pendingRef = useRef(false);
 
@@ -35,8 +36,9 @@ export default function WalletButtons() {
       const chain = namespace === "solana" ? "solana" : "evm";
       const signMessageFn = async (message) => {
         if (chain === "evm") {
-          if (!evmProvider) throw new Error("EVM wallet provider unavailable");
-          return evmProvider.request({ method: "personal_sign", params: [message, address] });
+          // wagmi drives the active connector (injected Binance/MetaMask or
+          // WalletConnect mobile) and reliably surfaces the signing prompt.
+          return signMessageAsync({ account: address, message });
         }
         if (!solProvider?.signMessage) throw new Error("Solana wallet provider unavailable");
         const encoded = new TextEncoder().encode(message);
@@ -53,7 +55,7 @@ export default function WalletButtons() {
     } finally {
       setBusy(false);
     }
-  }, [address, caipAddress, evmProvider, solProvider, walletSignIn, navigate]);
+  }, [address, caipAddress, solProvider, signMessageAsync, walletSignIn, navigate]);
 
   useEffect(() => {
     if (pendingRef.current && isConnected && address) {
