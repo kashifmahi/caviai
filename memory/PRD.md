@@ -83,3 +83,13 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - ✅ Deposit abuse guard: confirm dialog each deposit; 3 attempts allowed; 4th → 403 + securityFlag + "contact admin" banner. Admin "Security" tab lists flagged users; Remove flag resets attempts (audit logged).
 - ✅ ROI activation timing: deposit 05:00–05:59 AM PKT → same-day 6 AM cycle; any other time → next-day 6 AM. run_roi_cycle uses activated deposit base only (PKT cycle date). Auto-runs unattended at 6 AM PKT.
 - Tested: 38 regression + 7 new-rule backend tests pass; full frontend E2E verified.
+
+## Iteration 12 (2026-06-26) — Referral system (single-level, 10% monthly)
+- ✅ Each user gets a unique `referralCode` (8 hex upper) + link FRONTEND_URL/signup?ref=CODE. Backfilled on demand via ensure_referral_code.
+- ✅ Attribution: register stores referralCode on pending_registrations; verify-otp + wallet-login set new user's `referredBy`. Frontend captures ?ref (Signup useSearchParams + localStorage cavi_ref), passes to register and wallet auth.
+- ✅ Reward model: referrer earns 10% (REFERRAL_RATE) of each referee's MONTHLY staking ROI. Only COMPLETED months are claimable (current month shows as pendingThisMonth). Earning continues only while referee balance > 0; if they withdraw everything, accrual stops.
+- ✅ Separate pocket: referral earnings are tracked via `referral_claims` (unique referrerId+refereeId+month). Withdrawn separately via POST /api/referrals/withdraw (withdrawal docs tagged source='referral'). Main balance (user_financials) + admin_users exclude source='referral' withdrawals. referral_balance = claimed - approved/pending referral withdrawals.
+- ✅ Routes: GET /api/referrals (overview), POST /api/referrals/claim (idempotent, 400 when nothing claimable), POST /api/referrals/withdraw. Indexes added on startup.
+- ✅ Frontend: new ReferralsPage (/app/referrals) with link/copy/share, 4 stat cards, claim + withdraw form, referees list, claim history. nav-referrals sidebar link. Overview referral invite card. Signup ?ref banner.
+- Tested: testing_agent iteration_11 — backend 10/10 pytest (overview, attribution, claim math 10% of past-month ROI, idempotent claim, balance gating, separate-pocket withdrawal not touching main balance, insufficient-balance). Frontend Playwright key flows pass. No critical/bugs. Test file: /app/backend/tests/test_referrals.py.
+- Note (minor, deferred): admin withdrawals list does not visually label source='referral' rows; reject path auto-restores referral balance (pending row clears). Acceptable for MVP.
