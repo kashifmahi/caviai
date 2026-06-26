@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, Wallet } from "lucide-react";
-import { useAppKit, useAppKitAccount, useAppKitProvider } from "@reown/appkit/react";
+import { useAppKit, useAppKitAccount, useAppKitProvider, useAppKitState } from "@reown/appkit/react";
 import { useAuth } from "@/context/AuthContext";
 import { formatError } from "@/lib/api";
 import { base58encode } from "@/lib/web3";
@@ -21,6 +21,7 @@ export default function WalletButtons() {
   const { walletSignIn } = useAuth();
   const navigate = useNavigate();
   const { open } = useAppKit();
+  const { open: modalOpen } = useAppKitState();
   const { address, isConnected, caipAddress } = useAppKitAccount();
   const { walletProvider: evmProvider } = useAppKitProvider("eip155");
   const { walletProvider: solProvider } = useAppKitProvider("solana");
@@ -60,6 +61,14 @@ export default function WalletButtons() {
       runLogin();
     }
   }, [isConnected, address, caipAddress, runLogin]);
+
+  // If the modal was closed without a connection, clear the pending flag so a
+  // later restored session can't silently auto-trigger sign-in.
+  useEffect(() => {
+    if (!modalOpen && pendingRef.current && !isConnected) {
+      pendingRef.current = false;
+    }
+  }, [modalOpen, isConnected]);
 
   const handleConnect = async () => {
     if (busy) return;
