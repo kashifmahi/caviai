@@ -54,6 +54,10 @@ upsert_env "$BENV" FRONTEND_URL "https://${DOMAIN}"
 echo "==> Updating backend..."
 cd "${APP_DIR}/backend"
 ./venv/bin/pip install -r requirements.txt
+# Ensure the avatar upload dir exists and is writable by the backend service user
+# (the systemd service runs as www-data). Missing/unwritable dir crashes startup.
+sudo mkdir -p "${APP_DIR}/backend/uploads/avatars" 2>/dev/null || mkdir -p "${APP_DIR}/backend/uploads/avatars" || true
+sudo chown -R www-data:www-data "${APP_DIR}/backend/uploads" 2>/dev/null || true
 sudo systemctl restart cavi-backend
 
 echo "==> Reconciling frontend/.env + rebuilding..."

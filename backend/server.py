@@ -54,7 +54,11 @@ ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL')
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 
 UPLOAD_DIR = ROOT_DIR / "uploads" / "avatars"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+except OSError as _e:
+    # Never let an avatar-storage permission/FS issue crash the whole API (login etc.).
+    logging.getLogger("cavi").error("Could not create avatar upload dir %s: %s", UPLOAD_DIR, _e)
 AVATAR_EXTS = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 LOGIN_MAX_ATTEMPTS = 5
@@ -1093,7 +1097,12 @@ async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_c
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file.")
     filename = f"{user['id']}_{uuid.uuid4().hex[:8]}.{ext}"
-    (UPLOAD_DIR / filename).write_bytes(data)
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        (UPLOAD_DIR / filename).write_bytes(data)
+    except OSError as e:
+        logger.error("Avatar write failed: %s", e)
+        raise HTTPException(status_code=503, detail="Image storage is temporarily unavailable. Please try again later.")
     # remove this user's previous avatar files
     for old in UPLOAD_DIR.glob(f"{user['id']}_*"):
         if old.name != filename:
