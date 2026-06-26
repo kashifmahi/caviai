@@ -15,7 +15,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${APP_DIR}"
 
 echo "==> Pulling latest code..."
-git pull --ff-only
+git fetch --all --quiet || echo "WARN: git fetch failed; using code on disk."
+# Force working tree to match remote (config.env is gitignored, so secrets are safe).
+git reset --hard "@{u}" || git pull --ff-only || echo "WARN: could not update code; continuing with current code."
 
 # ---- Load your settings (untracked; lives only on the VPS) -------------------
 if [ -f "${SCRIPT_DIR}/config.env" ]; then

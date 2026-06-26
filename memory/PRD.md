@@ -47,6 +47,13 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - Verified: local simulation (JWT/ENC preserved, special chars intact, dotenv parses, no dups) + testing_agent iteration_6 confirmed reset E2E + wallet modal both work in preview (app code correct; was purely env-on-VPS).
 - USER ACTION REQUIRED on VPS: git pull, add SMTP_*/REOWN_PROJECT_ID/ADMIN_NOTIFY_EMAIL to deploy/config.env, run bash deploy/deploy.sh.
 - Test user password rotated to NewCavi@2026 during testing.
+
+## Iteration 8 (2026-06-26) — Deploy reconcile actually reaching prod
+- 🐞 Diagnosis from VPS output: config.env had all values + deploy.sh had reconcile, but backend/.env still lacked SMTP/FRONTEND_URL and frontend build lacked Project ID → reconcile never executed (GitHub Action ran the OLD in-memory deploy.sh before git pull updated it, and/or `git pull --ff-only` aborted under set -e on local changes).
+- ✅ Hardened deploy/deploy.sh git step: `git fetch --all` + `git reset --hard @{u}` (config.env is gitignored, safe) with fallbacks, never aborts the deploy.
+- ✅ Added deploy/apply-env.sh — standalone reconcile (no git pull): writes backend/.env (preserving JWT/ENC) + frontend/.env from config.env, rebuilds frontend, restarts backend, prints SMTP/Project-ID status.
+- Verified deterministically: simulated user's exact stale backend/.env + their config.env → reconcile adds all keys, preserves JWT/ENC, reset link = https://cavi.solutions/reset-password?..., and a REAL Hostinger SMTP login with the reconciled creds succeeded. (VPS execution must be run by user; testing_agent has no VPS access.)
+- Provided user a one-shot inline command (no git pull) for immediate prod fix.
 - ✅ Strong password validation: min 8 + upper + lower + number + special. Enforced in backend (`validate_password_strength`) and frontend (`PasswordStrength.jsx` live meter on signup & reset).
 - ✅ Email OTP on registration: register now stores a `pending_registrations` doc + 6-digit OTP (10 min expiry), emails it via Hostinger SMTP; account is created only after `/auth/verify-otp`. Resend supported (`/auth/resend-otp`). Signup.js is now 2-step (form → OTP).
 - ✅ Forgot/Reset password: `/auth/forgot-password` emails a secure `secrets.token_urlsafe(32)` reset link (1h expiry, single-use, anti-enumeration); `/auth/reset-password` validates token+strength. New pages ForgotPassword.js, ResetPassword.js + routes; "Forgot password?" link on Login.
