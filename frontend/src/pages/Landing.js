@@ -39,6 +39,23 @@ function CountUp({ end, prefix = "", suffix = "", decimals = 0, duration = 1600 
   );
 }
 
+function Eyebrow({ children, color = "#6c63ff", live = false, className = "" }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 ff-mono text-[0.72rem] font-bold uppercase tracking-[0.18em] ${className}`}
+      style={{ color, borderColor: `${color}55`, background: `${color}1a`, boxShadow: `0 0 22px ${color}26` }}
+    >
+      {live ? (
+        <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: color }} /><span className="relative inline-flex rounded-full h-2 w-2" style={{ background: color }} /></span>
+      ) : (
+        <span className="w-1.5 h-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+      )}
+      {children}
+    </span>
+  );
+}
+
+
 /* ---------- Live payouts feed (creates FOMO / liveliness) ---------- */
 const NAMES = ["0xA1…f3", "satoshi.eth", "moonwhale", "0x9C…2b", "phantom_x", "yieldhunter", "0x4D…aa", "crypto_lina", "degen42", "0xF0…7e", "blockmint", "solana_sam"];
 function LivePayouts() {
@@ -62,7 +79,7 @@ function LivePayouts() {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" />
           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#00d4a0]" />
         </span>
-        <span className="overline text-[#00d4a0]">Live ROI Payouts</span>
+        <Eyebrow color="#00d4a0" live>Live ROI Payouts</Eyebrow>
       </div>
       <div className="space-y-2.5">
         <AnimatePresence initial={false}>
@@ -158,7 +175,7 @@ function ROICalculator() {
       <div className="absolute inset-0 tracing opacity-60" />
       <div className="relative glass rounded-2xl p-8">
         <div className="flex items-center justify-between mb-6">
-          <span className="overline text-[#f0a500]">Projection Engine</span>
+          <Eyebrow color="#f0a500">Projection Engine</Eyebrow>
           <Sparkles className="w-4 h-4 text-[#f0a500]" />
         </div>
         <h3 className="ff-head text-2xl font-bold mb-6">ROI Calculator</h3>
@@ -616,10 +633,7 @@ export default function Landing() {
           <motion.div className="md:col-span-7" initial="hidden" animate="show"
             variants={{ hidden: {}, show: { transition: { staggerChildren: 0.12 } } }}>
             <motion.div variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}>
-              <span className="overline text-[#6c63ff] inline-flex items-center gap-2">
-                <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#6c63ff] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#6c63ff]" /></span>
-                Multi-chain wealth engine
-              </span>
+              <Eyebrow color="#6c63ff" live>Multi-chain wealth engine</Eyebrow>
             </motion.div>
             <motion.h1 variants={{ hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0 } }} className="ff-head text-5xl md:text-7xl font-black tracking-tighter leading-[0.95] mt-4">
               Grow Your <br /> Wealth With <span className="shimmer-text">CAVI</span>
@@ -659,10 +673,7 @@ export default function Landing() {
       {/* LIVE PLATFORM PERFORMANCE */}
       <section className="max-w-7xl mx-auto px-6 pt-20 pb-10">
         <Reveal>
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#00d4a0]" /></span>
-            <span className="overline text-[#00d4a0]">Live on CAVI</span>
-          </div>
+          <Eyebrow color="#00d4a0" live>Live on CAVI</Eyebrow>
           <h2 className="ff-head text-3xl md:text-4xl font-bold mt-3 mb-10 max-w-2xl">Real-time platform performance</h2>
         </Reveal>
         <div className="grid md:grid-cols-3 gap-6">
@@ -678,7 +689,7 @@ export default function Landing() {
       {/* HOW */}
       <section id="how" className="max-w-7xl mx-auto px-6 py-24">
         <Reveal>
-          <span className="overline text-[#6c63ff]">How it works</span>
+          <Eyebrow color="#6c63ff">How it works</Eyebrow>
           <h2 className="ff-head text-3xl md:text-4xl font-bold mt-3 mb-12 max-w-2xl">Built like a terminal. Secured like a vault.</h2>
         </Reveal>
         <div className="grid md:grid-cols-3 gap-6">
@@ -705,7 +716,7 @@ export default function Landing() {
       <section id="networks" className="max-w-7xl mx-auto px-6 py-24">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <Reveal>
-            <span className="overline text-[#f0a500]">Supported networks</span>
+            <Eyebrow color="#f0a500">Supported networks</Eyebrow>
             <h2 className="ff-head text-3xl md:text-5xl font-bold mt-3 mb-6">Four chains. <br /> One vault.</h2>
             <p className="text-white/50 mb-8 max-w-md">CAVI routes your deposit base across the most liquid networks in crypto, with a unified terminal experience.</p>
             <div className="grid grid-cols-2 gap-4 max-w-md">
