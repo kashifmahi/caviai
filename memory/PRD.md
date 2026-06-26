@@ -93,3 +93,13 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - ✅ Frontend: new ReferralsPage (/app/referrals) with link/copy/share, 4 stat cards, claim + withdraw form, referees list, claim history. nav-referrals sidebar link. Overview referral invite card. Signup ?ref banner.
 - Tested: testing_agent iteration_11 — backend 10/10 pytest (overview, attribution, claim math 10% of past-month ROI, idempotent claim, balance gating, separate-pocket withdrawal not touching main balance, insufficient-balance). Frontend Playwright key flows pass. No critical/bugs. Test file: /app/backend/tests/test_referrals.py.
 - Note (minor, deferred): admin withdrawals list does not visually label source='referral' rows; reject path auto-restores referral balance (pending row clears). Acceptable for MVP.
+
+## Iteration 13 (2026-06-26) — Referral weekly/monthly modes + mode-change approval + domain link
+- ✅ Two payout modes: WEEKLY (default for all users incl. existing) and MONTHLY. user.referralMode default "weekly".
+- ✅ Weekly: 10% of each completed 7-day staking window (anchored at referee's first roi cycleDate; complete when start+7days<=today PKT). Capped at 3 claims per PKT month (claimMonth field); 4th claim => 400 "only 3 times per month". compute_referral_rewards + _weekly_windows engine shared by overview & claim.
+- ✅ Monthly: 10% of each completed calendar month, no cap (existing behaviour, refactored into the shared engine).
+- ✅ Mode locked like wallet generation. POST /api/referrals/mode-request {mode} creates a pending request (guards same-mode + duplicate-pending) and emails admin+user. Admin tab "Referrals" (GET/PATCH /api/admin/referral-mode-requests) approve flips user.referralMode + emails user; reject emails user. notify_mode_request / notify_mode_decision.
+- ✅ referral_claims now dedup by (referrerId, refereeId, period); period="YYYY-MM" (monthly) or window-start "YYYY-MM-DD" (weekly). Startup drops old month-index, adds period unique + claimMonth index. referral_mode_requests collection.
+- ✅ Referral link now built from window.location.origin on the frontend (ReferralsPage + Overview) so it always matches the live domain (cavi.solutions in prod). Admin withdrawals table tags source='referral' rows.
+- Tested: testing_agent iteration_12 — 21/21 backend pytest + 13/13 frontend Playwright, no issues. Confirmed login/OTP regression-free on preview. Test file: /app/backend/tests/test_referrals.py.
+- ⚠️ LIVE SITE 502: cavi.solutions frontend loads but /api returns 502 — the VPS systemd backend (cavi-backend) is DOWN. This is infra, not code. Fix: restart cavi-backend on the VPS + redeploy latest code.
