@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 8 verified the validator-node STAKING email rewording + 30-min reset expiry, both frontend and backend. BACKEND (9/9 pytest pass, /app/backend/tests/test_cavi_staking_emails.py against the preview URL): (a) regression — login (NewCavi@2026), /api/auth/me, /api/wallets, /api/roi all 200; (b) POST /api/auth/register with a fresh TEST_otp_* email + Cavi@Strong1 returns {ok:true, otpRequired:true, emailSent:true} and backend log shows 'Email sent to test_otp_*@example.com: Your CAVI verification code'; (c) POST /api/auth/forgot-password for hajraanwar157@gmail.com returns {ok:true} and the newest unused row in mongo db.password_reset_tokens (matched by userId, since the schema stores userId not email) shows expiresAt - createdAt = 30.00 min (within 29-31 min tolerance) — backend log: 'Email sent to hajraanwar157@gmail.com: Reset your CAVI password'; (d) POST /api/auth/reset-password with that token + NewCavi@2026 returns {ok:true}, and immediately reusing the token returns 400 'Invalid or already-used reset link.'; (e) deposit + withdrawal still dispatch: as hajraanwar157@gmail.com, ensured an existing ETH wallet, POST /api/wallets/{id}/deposit {amount:25} returned 200 and logs show 'Email sent to hajraanwar157@gmail.com: Your deposit is in — and already at work 🎉' + admin alert '[CAVI] New deposit $25.00 from Hajra Anwar' to kashifmahi271@gmail.com; POST /api/withdrawals {amount:5} returned 200 with status:pending and logs show 'Email sent to hajraanwar157@gmail.com: We've received your withdrawal request' + admin alert '[CAVI] Withdrawal approval needed — $5.00 from Hajra Anwar'. (Test user still had deposit slots left so no fresh-OTP-user fallback was needed, but the fallback is implemented and exercised in code.) FRONTEND (Playwright on the preview URL): GET / returned 200 and the page body contains zero occurrences (case-insensitive) of 'deposit-only', 'deposit only' or 'never compounded'; 'Validator-node staking' string present; GET /login same — zero forbidden phrases, left panel contains 'Validator-node staking' AND 'Daily rewards' (Login left tagline); GET /forgot-password, filled the email input with hajraanwar157@gmail.com and clicked submit, the confirmation screen shows 'Check your inbox … If an account exists for hajraanwar157@gmail.com, we've sent a password reset link. It expires in 30 minutes.' (NOT 1 hour). Screenshot saved at .screenshots/iter8_forgot.png.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cavi_staking_emails.py",
+    "/app/test_reports/pytest/iter8_staking_emails.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~1241 lines — splitting into routers (auth, wallets, roi, admin, emails) is overdue; not blocking but harder to navigate each iteration.",
+    "Email-copy logic (notify_deposit, notify_withdrawal, _otp_email_html, _email_shell) lives inline in server.py. As the brand voice grows, factor these into /app/backend/emails/templates.py so copy changes are isolated from route code and unit-testable.",
+    "password_reset_tokens row stores userId only (no email). The TTL index expireAfterSeconds=3600 on expiresAt is now LONGER than the actual expiry window (30 min) — the TTL is harmless because the route also checks doc['expiresAt'] < now, but for clarity set expireAfterSeconds=1800 to match the new policy, otherwise expired tokens linger in mongo for an extra 30 min.",
+    "_ensure_wallet path in tests uses the user's existing wallet, which is fine. In production, POST /api/wallets stores plaintext privateKey (encryption is via ENCRYPTION_KEY env but not visibly used in the route surface read here) — please double-check the encryption layer in the wallet write path before exposing more features.",
+    "Frontend reset-confirmation copy 'It expires in 30 minutes.' is hard-coded in ForgotPassword.js. If the backend expiry policy ever changes again, this string will drift. Consider returning the expiry minutes from /api/auth/forgot-password or centralising the constant."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cavi_staking_emails.py (new pytest suite for iter8: OTP register, 30-min reset, deposit+withdrawal email dispatch, regression)"
+  ],
+  "success_rate": { "backend": "100% (9/9 pytest)", "frontend": "100% (landing/login wording removed, forgot-password 30-min copy)" },
+  "test_credentials": "hajraanwar157@gmail.com / NewCavi@2026 (rotated to itself by the reset-password test — no effective password change). Superadmin: superadmin@cavi.io / Cavi@Admin2025.",
+  "seed_data_creation": "One throwaway pending_registrations row was inserted (and immediately deleted) under TEST_otp_<uuid8>@example.com to verify the OTP email. One deposit of $25 and one withdrawal of $5 (status: pending) were created for hajraanwar157@gmail.com to verify the staking emails — main agent can leave these as-is (they are normal user activity) or reject the withdrawal from /admin if cleanup is desired.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Email subject lines to grep for in /var/log/supervisor/backend.*.log: 'Your CAVI verification code' (OTP), 'Reset your CAVI password' (forgot), 'Your deposit is in — and already at work 🎉' (deposit user), '[CAVI] New deposit ...' (deposit admin), \"We've received your withdrawal request\" (withdrawal user), '[CAVI] Withdrawal approval needed — ...' (withdrawal admin). password_reset_tokens schema in mongo: {id, userId, token, expiresAt, used, createdAt} — match by userId, not email. MAX_DEPOSITS=3 per user; if the test user is flagged or exhausted, the suite already implements a fresh-OTP-user fallback that pulls the OTP from db.pending_registrations. Reusable iter8 suite: /app/backend/tests/test_cavi_staking_emails.py (9 tests, ~6s).",
+  "rca of the issue": "N/A — no bugs found. Initial test failure on the forgot-password mongo query was a test-side mistake (queried by email, but the schema stores userId only); fixed by joining via db.users first. Backend behavior was correct throughout."
+}

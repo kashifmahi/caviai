@@ -128,7 +128,7 @@ def _email_shell(title: str, body_html: str) -> str:
       {body_html}
     </div>
     <div style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.06);color:#64748b;font-size:12px;">
-      Deposit-only · Never compounded · CAVI<br/>If you didn't request this, you can safely ignore this email.
+      CAVI · Validator-node staking across ETH, SOL, BNB &amp; TRC20<br/>Questions? Just reply to this email — a real person will answer.
     </div>
   </div>
 </div>"""
@@ -173,30 +173,56 @@ def _money(v) -> str:
     except Exception:
         return f"${v}"
 
-def notify_deposit(user: dict, amount: float, network: str, roi_start: str):
+def _btn(href: str, label: str) -> str:
+    return (f"<p style='margin:24px 0;'><a href='{href}' style='background:#6c63ff;color:#fff;"
+            f"text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:700;"
+            f"display:inline-block;'>{label}</a></p>")
+
+def _row(label: str, value: str, break_word: bool = False) -> str:
+    wb = "word-break:break-all;" if break_word else ""
+    return (f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>{label}</td>"
+            f"<td style='color:#fff;{wb}'>{value}</td></tr>")
+
+def _otp_email_html(name: str, otp: str) -> str:
+    return _email_shell(
+        "Your CAVI verification code",
+        f"<p>Hi {name},</p>"
+        f"<p>Here's your one-time code:</p>"
+        f"<p style='font-size:34px;font-weight:800;letter-spacing:8px;color:#6c63ff;margin:24px 0;'>{otp}</p>"
+        f"<p>Enter it in the app to confirm it's really you. The code is good for 10 minutes.</p>"
+        f"<p style='color:#94a3b8;font-size:13px;'>CAVI will never ask you for this code by phone, chat, or "
+        f"email reply. If someone does, it's not us — don't share it.</p>",
+    )
+
+def notify_deposit(user: dict, amount: float, network: str, wallet_address: str):
     amt = _money(amount)
     if user.get("email"):
         html = _email_shell(
-            "Deposit received",
-            f"<p>Hi {user.get('username','there')}, we've recorded your deposit on CAVI.</p>"
+            "Your deposit is in — and already at work 🎉",
+            f"<p>Hi {user.get('username','there')},</p>"
+            f"<p>Good news: your deposit just landed.</p>"
             f"<table style='margin:16px 0;font-size:14px;'>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{network}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>ROI starts</td><td style='color:#fff;'>{roi_start}</td></tr>"
-            f"</table>"
-            f"<p>Your deposit base only grows — ROI is paid daily and never compounded.</p>",
+            + _row("Amount", amt)
+            + _row("Network", network)
+            + _row("Wallet", wallet_address or "—", break_word=True)
+            + "</table>"
+            f"<p>It's now staked on our validator nodes, which means it starts earning from here. "
+            f"Your daily staking rewards will show up in your dashboard, and you can track everything in real time.</p>"
+            + _btn(f"{FRONTEND_URL}/app", "View my dashboard")
+            + f"<p style='color:#94a3b8;font-size:13px;'>A quick reminder: rewards vary with network conditions, "
+            f"and staked assets may have an unbonding period before withdrawal. We'll keep you posted along the way.</p>",
         )
-        fire_email(user["email"], "Your CAVI deposit was recorded", html,
-                   f"Your deposit of {amt} on {network} was recorded. ROI starts {roi_start}.")
+        fire_email(user["email"], "Your deposit is in — and already at work 🎉", html,
+                   f"Your deposit of {amt} on {network} just landed and is now staked on our validator nodes, earning daily rewards.")
     if ADMIN_NOTIFY_EMAIL:
         html = _email_shell(
             "New deposit alert",
             f"<p>A user just made a deposit on CAVI.</p>"
             f"<table style='margin:16px 0;font-size:14px;'>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>User</td><td style='color:#fff;'>{user.get('username')} ({user.get('email') or user.get('walletAddress')})</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{network}</td></tr>"
-            f"</table>",
+            + _row("User", f"{user.get('username')} ({user.get('email') or user.get('walletAddress')})")
+            + _row("Amount", amt)
+            + _row("Network", network)
+            + "</table>",
         )
         fire_email(ADMIN_NOTIFY_EMAIL, f"[CAVI] New deposit {amt} from {user.get('username')}", html,
                    f"New deposit {amt} ({network}) by {user.get('username')} ({user.get('email')}).")
@@ -236,33 +262,39 @@ def notify_withdrawal_decision(user: dict, wd: dict, status: str):
 def notify_withdrawal(user: dict, wd: dict):
     amt = _money(wd["amount"])
     net = _money(wd["netAmount"])
+    ts = str(wd.get("createdAt", ""))[:19].replace("T", " ") + " UTC"
     if user.get("email"):
         html = _email_shell(
-            "Withdrawal request received",
-            f"<p>Hi {user.get('username','there')}, we've received your withdrawal request. It's now pending admin approval.</p>"
+            "We've received your withdrawal request",
+            f"<p>Hi {user.get('username','there')},</p>"
+            f"<p>Your withdrawal request is in and we're on it.</p>"
             f"<table style='margin:16px 0;font-size:14px;'>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>You receive</td><td style='color:#fff;'>{net}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{wd['network']}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>To</td><td style='color:#fff;word-break:break-all;'>{wd['destinationAddress']}</td></tr>"
-            f"</table>"
-            f"<p>You'll be notified once it's processed.</p>",
+            + _row("Amount", amt)
+            + _row("Network", wd['network'])
+            + _row("Destination", wd['destinationAddress'], break_word=True)
+            + _row("Requested", ts)
+            + "</table>"
+            f"<p>Because your assets are staked on validator nodes, there may be a short unbonding period "
+            f"before funds are released — you'll get another email the moment they're sent on their way.</p>"
+            f"<p style='color:#94a3b8;font-size:13px;'>Didn't make this request? Contact us right away by replying "
+            f"to this email, and we'll freeze the withdrawal.</p>"
+            + _btn(f"{FRONTEND_URL}/app/withdrawals", "Review my account activity"),
         )
-        fire_email(user["email"], "Your CAVI withdrawal request is pending", html,
-                   f"Withdrawal request of {amt} ({wd['network']}) received and pending approval.")
+        fire_email(user["email"], "We've received your withdrawal request", html,
+                   f"Your withdrawal request of {amt} ({wd['network']}) to {wd['destinationAddress']} is received and pending. There may be a short unbonding period before release.")
     if ADMIN_NOTIFY_EMAIL:
         link = f"{FRONTEND_URL}/admin" if FRONTEND_URL else "the admin panel"
         html = _email_shell(
             "Withdrawal approval needed",
             f"<p>A withdrawal request needs your approval on CAVI.</p>"
             f"<table style='margin:16px 0;font-size:14px;'>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>User</td><td style='color:#fff;'>{user.get('username')} ({user.get('email') or user.get('walletAddress')})</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Net payout</td><td style='color:#fff;'>{net}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{wd['network']}</td></tr>"
-            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>To</td><td style='color:#fff;word-break:break-all;'>{wd['destinationAddress']}</td></tr>"
-            f"</table>"
-            f"<p style='margin-top:20px;'><a href='{link}' style='background:#6c63ff;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;display:inline-block;'>Review in admin panel</a></p>",
+            + _row("User", f"{user.get('username')} ({user.get('email') or user.get('walletAddress')})")
+            + _row("Amount", amt)
+            + _row("Net payout", net)
+            + _row("Network", wd['network'])
+            + _row("To", wd['destinationAddress'], break_word=True)
+            + "</table>"
+            + _btn(link, "Review in admin panel"),
         )
         fire_email(ADMIN_NOTIFY_EMAIL, f"[CAVI] Withdrawal approval needed — {amt} from {user.get('username')}", html,
                    f"Withdrawal {amt} ({wd['network']}) by {user.get('username')} needs approval. Review at {link}")
@@ -479,14 +511,9 @@ async def register(body: RegisterReq):
         }},
         upsert=True,
     )
-    html = _email_shell(
-        "Verify your email",
-        f"<p>Welcome to CAVI. Use the code below to verify your email and activate your account.</p>"
-        f"<p style='font-size:34px;font-weight:800;letter-spacing:8px;color:#6c63ff;margin:24px 0;'>{otp}</p>"
-        f"<p>This code expires in 10 minutes.</p>",
-    )
+    html = _otp_email_html(body.username, otp)
     sent = await send_email(email, "Your CAVI verification code", html,
-                            f"Your CAVI verification code is {otp}. It expires in 10 minutes.")
+                            f"Hi {body.username}, your CAVI verification code is {otp}. It's good for 10 minutes. CAVI will never ask you for this code.")
     return {"otpRequired": True, "email": email, "emailSent": sent}
 
 @api.post("/auth/verify-otp")
@@ -520,14 +547,25 @@ async def verify_otp(body: VerifyOtpReq):
     await db.users.insert_one(dict(doc))
     await db.pending_registrations.delete_one({"email": email})
     welcome_html = _email_shell(
-        "Welcome to CAVI",
-        f"<p>Hi {doc['username']}, your email is verified and your account is live. 🎉</p>"
-        f"<p>You can now create deposit wallets across ETH, SOL, BNB and TRC20, and start earning "
-        f"deposit-only ROI that's paid daily and never compounded.</p>"
-        f"<p style='margin-top:20px;'><a href='{FRONTEND_URL}/app' style='background:#6c63ff;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;display:inline-block;'>Go to your dashboard</a></p>",
+        "Welcome to CAVI — your wallets are ready 🎉",
+        f"<p>Hi {doc['username']},</p>"
+        f"<p>Your email is verified and your account is live. Welcome aboard.</p>"
+        f"<p>CAVI puts your assets to work through validator-node staking across ETH, SOL, BNB, and TRC20. "
+        f"You can spin up a deposit wallet on any of these networks and start earning staking rewards, paid out daily.</p>"
+        f"<p>What makes us a little different: we run a combined staking-and-yield approach on our validators, "
+        f"which lets us squeeze more efficiency out of the same deposit than a single-strategy setup.</p>"
+        f"<p>A few things worth knowing up front, because we'd rather you trust us than be surprised:</p>"
+        f"<ul style='color:#cbd5e1;font-size:14px;padding-left:18px;'>"
+        f"<li style='margin-bottom:6px;'>Rewards come from validator staking, so they vary with network conditions rather than being a fixed promise.</li>"
+        f"<li style='margin-bottom:6px;'>Staked assets may have an unbonding period before you can withdraw.</li>"
+        f"<li style='margin-bottom:6px;'>As with all staking, there's some risk (slashing, network downtime), and we work to minimize it.</li>"
+        f"</ul>"
+        f"<p>Ready to get started?</p>"
+        + _btn(f"{FRONTEND_URL}/app", "Go to your dashboard")
+        + f"<p style='color:#94a3b8;font-size:13px;'>Questions? Just reply to this email — a real person will answer.</p>",
     )
-    fire_email(email, "Welcome to CAVI 🎉", welcome_html,
-               f"Welcome to CAVI, {doc['username']}! Your account is now verified and live.")
+    fire_email(email, "Welcome to CAVI — your wallets are ready 🎉", welcome_html,
+               f"Hi {doc['username']}, your email is verified and your CAVI account is live. CAVI puts your assets to work through validator-node staking across ETH, SOL, BNB and TRC20, paying staking rewards daily.")
     return {"token": create_access_token(uid), "user": public_user(doc)}
 
 @api.post("/auth/resend-otp")
@@ -542,14 +580,9 @@ async def resend_otp(body: ResendOtpReq):
         {"email": email},
         {"$set": {"otp": otp, "otpExpiresAt": now + timedelta(minutes=10), "attempts": 0}},
     )
-    html = _email_shell(
-        "Verify your email",
-        f"<p>Here is your new verification code.</p>"
-        f"<p style='font-size:34px;font-weight:800;letter-spacing:8px;color:#6c63ff;margin:24px 0;'>{otp}</p>"
-        f"<p>This code expires in 10 minutes.</p>",
-    )
+    html = _otp_email_html(pending["username"], otp)
     sent = await send_email(email, "Your CAVI verification code", html,
-                            f"Your new CAVI verification code is {otp}. It expires in 10 minutes.")
+                            f"Hi {pending['username']}, your new CAVI verification code is {otp}. It's good for 10 minutes. CAVI will never ask you for this code.")
     return {"ok": True, "emailSent": sent}
 
 @api.post("/auth/forgot-password")
@@ -563,20 +596,22 @@ async def forgot_password(body: ForgotPasswordReq):
             {"userId": user["id"], "used": False}, {"$set": {"used": True}})
         await db.password_reset_tokens.insert_one({
             "id": str(uuid.uuid4()), "userId": user["id"], "token": token,
-            "expiresAt": now + timedelta(hours=1), "used": False,
+            "expiresAt": now + timedelta(minutes=30), "used": False,
             "createdAt": now,
         })
         link = f"{FRONTEND_URL}/reset-password?token={token}"
         html = _email_shell(
-            "Reset your password",
-            f"<p>We received a request to reset your CAVI password. Click the button below to choose a new one.</p>"
-            f"<p style='margin:28px 0;'><a href='{link}' style='background:#6c63ff;color:#fff;text-decoration:none;"
-            f"padding:14px 28px;border-radius:8px;font-weight:700;display:inline-block;'>Reset password</a></p>"
-            f"<p style='font-size:13px;color:#94a3b8;'>Or paste this link into your browser:<br/>{link}</p>"
-            f"<p>This link expires in 1 hour. If you didn't request it, ignore this email.</p>",
+            "Reset your CAVI password",
+            f"<p>Hi {user.get('username','there')},</p>"
+            f"<p>We got a request to reset the password on your CAVI account. Tap the button below and "
+            f"you'll be back to your wallets in a moment.</p>"
+            + _btn(link, "Reset my password")
+            + f"<p style='font-size:13px;color:#94a3b8;'>Or paste this link into your browser:<br/>{link}</p>"
+            f"<p>This link expires in 30 minutes for your security. If you didn't ask for this, you can safely "
+            f"ignore this email — your account stays locked down and nothing changes.</p>",
         )
         await send_email(email, "Reset your CAVI password", html,
-                         f"Reset your CAVI password: {link} (expires in 1 hour)")
+                         f"Reset your CAVI password: {link} (expires in 30 minutes). If you didn't ask for this, ignore this email.")
     return {"ok": True}
 
 @api.post("/auth/reset-password")
@@ -812,7 +847,7 @@ async def simulate_deposit(wallet_id: str, body: DepositReq, user: dict = Depend
     await db.users.update_one({"id": user["id"]}, {"$inc": {"depositBase": body.amount, "depositCount": 1}})
     fin = await user_financials(user["id"])
     remaining = max(0, MAX_DEPOSITS - (count + 1))
-    notify_deposit(user, body.amount, wallet["network"], start_date)
+    notify_deposit(user, body.amount, wallet["network"], wallet.get("address"))
     return {"financials": fin, "roiStartDate": start_date, "attemptsRemaining": remaining}
 
 @api.get("/wallets/{wallet_id}/deposits")

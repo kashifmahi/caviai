@@ -17,7 +17,7 @@ const solanaAdapter = new SolanaAdapter();
 
 const metadata = {
   name: "CAVI",
-  description: "Multi-chain crypto investment platform — deposit-only ROI.",
+  description: "Multi-chain staking platform — earn daily rewards via validator nodes.",
   url: typeof window !== "undefined" ? window.location.origin : "https://cavi.solutions",
   icons: ["https://cavi.solutions/logo.png"],
 };

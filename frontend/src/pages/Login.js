@@ -29,10 +29,10 @@ export function AuthShell({ children, title, subtitle }) {
           </Link>
           <div className="glass rounded-2xl p-8 max-w-md">
             <p className="ff-head text-2xl font-bold leading-snug">
-              "The most disciplined way to grow a deposit base across four chains."
+              "The most disciplined way to grow your assets across four chains."
             </p>
             <p className="text-white/40 ff-mono text-xs mt-4 uppercase tracking-wider">
-              Deposit-only · Never compounded
+              Validator-node staking · Daily rewards
             </p>
           </div>
         </div>

@@ -32,7 +32,7 @@ export default function ForgotPassword() {
           <div className="flex justify-center text-[#6c63ff]"><MailCheck className="w-12 h-12" /></div>
           <p className="text-white/60 text-sm">
             If an account exists for <span className="text-white">{email}</span>, we've sent a password reset link.
-            It expires in 1 hour.
+            It expires in 30 minutes.
           </p>
           <Link to="/login" className="inline-block text-[#6c63ff] hover:underline text-sm" data-testid="forgot-back-login">
             Back to log in

@@ -313,7 +313,7 @@ export default function Landing() {
         <div className="grid md:grid-cols-3 gap-6">
           {[
             { icon: <Lock className="w-6 h-6 text-[#6c63ff]" />, t: "Self-custody wallets", d: "Deposit wallets are generated in your browser. Your private key is encrypted and never shown again.", c: "#6c63ff" },
-            { icon: <TrendingUp className="w-6 h-6 text-[#00d4a0]" />, t: "Deposit-only ROI", d: "Daily returns are computed on your deposit base. No compounding, no surprises — full transparency.", c: "#00d4a0" },
+            { icon: <TrendingUp className="w-6 h-6 text-[#00d4a0]" />, t: "Validator-node staking", d: "Your assets are staked across our validator nodes, earning staking rewards paid out daily — tracked live in your dashboard.", c: "#00d4a0" },
             { icon: <Zap className="w-6 h-6 text-[#f0a500]" />, t: "Fast withdrawals", d: "Request withdrawals any time. A small penalty applies only during the maintenance window.", c: "#f0a500" },
           ].map((c, i) => (
             <Reveal key={i} delay={i * 0.12}>
