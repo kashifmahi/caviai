@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 9 verified the new Security tab (change-password + lastLoginAt) end-to-end against the preview URL. BACKEND (7/7 pytest pass, /app/backend/tests/test_security_tab.py): (a) POST /api/auth/login as hajraanwar157@gmail.com returns user.lastLoginAt (ISO string) and GET /api/auth/me returns the same field; (b) POST /api/auth/change-password with wrong currentPassword => 400 'Current password is incorrect.', with weak newPassword => 400 strong-password message, with newPassword == currentPassword => 400 'New password must be different from your current one.'; (c) full happy-path: change from NewCavi@2026 -> TempCavi@2026! returns {ok:true}, login with old password is REJECTED (401), login with new password works, then revert TempCavi@2026! -> NewCavi@2026 returns {ok:true} and a final login with NewCavi@2026 still works — credentials restored as required; (d) wallet-account guard: synthetic mongo user with loginType='wallet' + minted JWT calling change-password => 400 'only available for email accounts' (synthetic user is deleted in teardown). FRONTEND (Playwright on preview URL): logged in as hajraanwar157@gmail.com / NewCavi@2026, navigated to /app/settings, both data-testid='settings-nav-profile' and data-testid='settings-nav-security' render in the sidebar; clicking Security shows data-testid='change-password-card' AND data-testid='security-lastlogin' with data-testid='last-login-value' = 'Jun 26, 2026, 11:45 AM' (real date, not '—'); typing matching current+new but a mismatched confirm and clicking data-testid='change-password-button' fires NO request to /api/auth/change-password (verified via page.on('request')) and the page surfaces a 'do not match' toast — exactly as required. Profile-tab regression: settings-save-button, avatar-upload-btn, profile-name-input, profile-bio-input all still render. Dashboard /app still renders charts (20 <svg> elements). Screenshot: .screenshots/iter9_security_tab.png. NO successful password change was performed via the UI (to avoid a second 'password was changed' SMTP alert beyond the one backend test); the backend suite already exercises the full Change + Login-with-new + Revert path. Final state: hajraanwar157@gmail.com password = NewCavi@2026 (verified by curl returning 200 at end of run).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_security_tab.py",
+    "/app/test_reports/pytest/iter9_security.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~1272 lines — splitting into routers (auth, wallets, roi, admin, emails) remains overdue. The new change_password handler keeps inline email-template strings; would be cleaner inside an emails/templates.py module.",
+    "change_password compares newPassword to the existing bcrypt hash via verify_password — correct, but consider also rate-limiting this endpoint (e.g., 5/min per user) to prevent brute-forcing currentPassword through the in-app form, since the existing brute-force lockout in /auth/login does not protect /auth/change-password.",
+    "lastLoginAt is updated on every login but never on logout or token refresh. If you later want 'last activity' for session timeout UX, store a separate lastActivityAt; reusing lastLoginAt would conflict with the Security UI label 'Last sign-in'.",
+    "Frontend SecuritySection: client-side strength check + confirm-match correctly short-circuits before the API call (verified — zero request fired on mismatch). Consider also disabling the Update Password button until all three fields are non-empty AND meet the regex, so users get faster feedback than a toast.",
+    "ChangePasswordReq has no field-length cap — Pydantic accepts arbitrarily long strings. Add max_length=256 (or similar) to both currentPassword and newPassword to bound bcrypt cost; bcrypt only uses the first 72 bytes anyway but rejecting oversize inputs early is hygienic."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_tab.py (new pytest suite for iter9: 7 tests covering lastLoginAt, change-password validation paths, success+revert, wallet guard)"
+  ],
+  "success_rate": { "backend": "100% (7/7 pytest)", "frontend": "100% (tabs, security card, lastlogin, mismatch-no-API, profile regression, dashboard)" },
+  "test_credentials": "hajraanwar157@gmail.com / NewCavi@2026 (restored — verified by final login returning 200). Superadmin: superadmin@cavi.io / Cavi@Admin2025.",
+  "seed_data_creation": "TestWalletGuard transiently inserts and deletes one mongo doc id=TEST_wallet_<uuid8> with loginType='wallet'. Two security-alert emails to hajraanwar157@gmail.com were triggered by the backend success+revert test (change to TempCavi@2026! then back to NewCavi@2026) — this is expected per the agent-to-agent note ('one or two').",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable suite: /app/backend/tests/test_security_tab.py — 7 tests, ~5s. Loads REACT_APP_BACKEND_URL from /app/frontend/.env via python-dotenv. Wallet-guard test imports server.db + server.create_access_token directly, so it runs in-process against the same mongo the API uses; cleans up its own user. UI testids in /app/frontend/src/pages/dashboard/ProfilePage.js: settings-nav-profile, settings-nav-security, change-password-card, security-lastlogin, last-login-value, current-password-input, new-password-input, confirm-password-input, change-password-button, security-wallet-note (only renders for wallet accounts — not exercised in browser since the test account is email).",
+  "rca of the issue": "N/A — no bugs found. Implementation matches the spec exactly: change_password validates loginType + bcrypt + strength + reuse in the correct order; lastLoginAt is set on both /auth/login and /auth/wallet-login then surfaced via public_user(); the frontend SecuritySection short-circuits the API call on confirm-mismatch."
+}

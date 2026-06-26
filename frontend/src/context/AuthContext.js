@@ -134,9 +134,14 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    const { data } = await api.post("/auth/change-password", { currentPassword, newPassword });
+    return data;
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, walletSignIn, logout, refresh, updateUsername, updateProfile, uploadAvatar }}
+      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, walletSignIn, logout, refresh, updateUsername, updateProfile, uploadAvatar, changePassword }}
     >
       {children}
     </AuthContext.Provider>

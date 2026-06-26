@@ -425,6 +425,10 @@ class ResetPasswordReq(BaseModel):
     token: str
     password: str
 
+class ChangePasswordReq(BaseModel):
+    currentPassword: str
+    newPassword: str
+
 class WalletNonceReq(BaseModel):
     address: str
     chain: str  # 'evm' or 'solana'
@@ -645,6 +649,9 @@ async def login(body: LoginReq):
     user = await db.users.find_one({"email": email})
     if not user or not user.get("password") or not verify_password(body.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"lastLoginAt": now_iso}})
+    user["lastLoginAt"] = now_iso
     return {"token": create_access_token(user["id"]), "user": public_user(user)}
 
 @api.post("/auth/wallet-nonce")
@@ -706,6 +713,9 @@ async def wallet_login(body: WalletVerifyReq):
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
         await db.users.insert_one(dict(user))
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"lastLoginAt": now_iso}})
+    user["lastLoginAt"] = now_iso
     return {"token": create_access_token(user["id"]), "user": public_user(user)}
 
 @api.get("/auth/me")
@@ -737,6 +747,27 @@ async def update_profile(body: ProfileUpdateReq, user: dict = Depends(get_curren
         await db.users.update_one({"id": user["id"]}, {"$set": updates})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     return {"user": public_user(updated)}
+
+@api.post("/auth/change-password")
+async def change_password(body: ChangePasswordReq, user: dict = Depends(get_current_user)):
+    if user.get("loginType") != "email" or not user.get("password"):
+        raise HTTPException(status_code=400, detail="Password change is only available for email accounts.")
+    if not verify_password(body.currentPassword, user["password"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    validate_password_strength(body.newPassword)
+    if verify_password(body.newPassword, user["password"]):
+        raise HTTPException(status_code=400, detail="New password must be different from your current one.")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"password": hash_password(body.newPassword)}})
+    if user.get("email"):
+        alert_html = _email_shell(
+            "Your password was changed",
+            f"<p>Hi {user.get('username','there')}, your CAVI password was just changed from your account settings.</p>"
+            f"<p>If this was you, no action is needed. If you didn't do this, reset your password immediately "
+            f"and contact us at {SUPPORT_EMAIL}.</p>",
+        )
+        fire_email(user["email"], "Security alert: your CAVI password was changed", alert_html,
+                   f"Your CAVI password was changed. If this wasn't you, contact {SUPPORT_EMAIL} immediately.")
+    return {"ok": True}
 
 @api.post("/auth/avatar")
 async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
