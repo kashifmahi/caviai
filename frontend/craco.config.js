@@ -1,5 +1,6 @@
 // craco.config.js
 const path = require("path");
+const webpack = require("webpack");
 require("dotenv").config();
 
 // Check if we're in development/preview mode (not production build)
@@ -37,6 +38,48 @@ let webpackConfig = {
       '@': path.resolve(__dirname, 'src'),
     },
     configure: (webpackConfig) => {
+
+      // Node core polyfills required by @solana/web3.js + WalletConnect under webpack 5
+      webpackConfig.resolve.fallback = {
+        ...(webpackConfig.resolve.fallback || {}),
+        crypto: require.resolve("crypto-browserify"),
+        stream: require.resolve("stream-browserify"),
+        buffer: require.resolve("buffer/"),
+        assert: require.resolve("assert/"),
+        http: require.resolve("stream-http"),
+        https: require.resolve("https-browserify"),
+        os: require.resolve("os-browserify/browser"),
+        url: require.resolve("url/"),
+        fs: false,
+        net: false,
+        tls: false,
+      };
+      webpackConfig.resolve.alias = {
+        ...(webpackConfig.resolve.alias || {}),
+        "process/browser": require.resolve("process/browser"),
+        accounts: false,
+      };
+      // ESM (.mjs) modules in deps reference bare specifiers like 'process/browser'
+      // which webpack 5 treats as fully-specified; relax that.
+      webpackConfig.module.rules.push({
+        test: /\.m?js$/,
+        resolve: { fullySpecified: false },
+      });
+      webpackConfig.plugins = [
+        ...(webpackConfig.plugins || []),
+        new webpack.ProvidePlugin({
+          Buffer: ["buffer", "Buffer"],
+          process: require.resolve("process/browser"),
+        }),
+      ];
+      webpackConfig.externals = [
+        ...(Array.isArray(webpackConfig.externals) ? webpackConfig.externals : []),
+        "pino-pretty", "lokijs", "encoding",
+      ];
+      webpackConfig.ignoreWarnings = [
+        ...(webpackConfig.ignoreWarnings || []),
+        /Failed to parse source map/,
+      ];
 
       // Add ignored patterns to reduce watched directories
         webpackConfig.watchOptions = {

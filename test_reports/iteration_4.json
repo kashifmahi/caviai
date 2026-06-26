@@ -1,0 +1,37 @@
+{
+  "summary": "Full backend + frontend validation of new auth-security + email-notification + WalletConnect/Reown features. Backend: 11/11 new pytest cases pass (weak-pw rejection, register->OTP, wrong/correct OTP verify, welcome email log, resend-otp ok/400, forgot-password anti-enumeration + reset-email log, reset-password with single-use token + weak-pw guard + password-changed alert email, deposit email pair (user + admin@kashifmahi271@gmail.com), withdrawal email pair, regression: existing user login + /auth/me + admin login). Frontend: /login + /signup both render with data-testid Connect Wallet button; goto-forgot navigates to /forgot-password; forgot-form submit shows 'Check your inbox'; /reset-password renders reset-password/reset-confirm/reset-submit + password-strength meter; signup live strength meter with all 5 pw-rule-* testids shown for a weak pw, and submitting with 'Cavi@Strong1' transitions to the OTP step (otp-form + otp-input visible); Connect Wallet button opens Reown AppKit modal (w3m-modal element + 'Search Wallet 530+' text confirmed). Headless wallet signing not attempted (per request).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AppKit WalletConnect modal", "issues": ["Console warning: '[Reown Config] Failed to fetch remote project configuration. Using local/default values.' Non-blocking — AppKit falls back to local config and modal still opens correctly. Likely outbound network egress from preview env to config.reown.com is blocked. Worth filing as low-priority infra note; doesn't affect end users on prod."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cavi_otp_email.py",
+    "/app/test_reports/pytest/iter4_otp_email.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py register endpoint stores hashed password in pending_registrations and DELETES the pending doc after verify — good idempotency. The 10-min OTP expiry index (expireAfterSeconds=3600) is set on createdAt with a 1-hour TTL, so expired pendings auto-clean — good.",
+    "forgot-password anti-enumeration is correct (always returns ok). However reset-token doc inserts without a uniqueness guard per user — if a user calls forgot-password repeatedly they accumulate live tokens (each independently single-use). Consider invalidating previous unused tokens for the same userId when issuing a new one to prevent reset-link spam from being chainable.",
+    "reset-password endpoint validates strength BEFORE checking token validity — minor: an attacker hitting /auth/reset-password with a random/invalid token can probe the strength rule. Low risk but flipping the order (validate token first, then strength) is cheaper and slightly safer.",
+    "fire_email uses asyncio.create_task with no error capture beyond the inner try/except in send_email — fine, but if the event loop is interrupted (worker recycle) the email is silently dropped. Acceptable for transactional alerts but worth a future retry queue.",
+    "Signup form uses native <input> with placeholders only (no <label>) — accessibility (a11y) could be improved with aria-label on Username/Email/Password fields. Reset/forgot pages have the same pattern.",
+    "AppKit createAppKit is initialised globally; the 'Failed to fetch remote project configuration' warning suggests outbound to config.reown.com is blocked in the preview env. Not a code bug — but if it ever fails on production it would degrade the wallet list. Worth catching the warning and showing a fallback CTA."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cavi_otp_email.py (created — 11 OTP/email/forgot-reset/notification tests)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% on targeted flows (login/signup/forgot/reset/OTP transition/wallet modal open)"},
+  "test_credentials": "Superadmin superadmin@cavi.io / Cavi@Admin2025; existing user hajraanwar157@gmail.com / NewCavi@2025; fresh signups created at runtime use prefix TEST_ and Cavi@Strong1.",
+  "seed_data_creation": "Created several TEST_ users at runtime (TEST_otp_ok_*, TEST_otp_full_*, TEST_otp_resend_*, TEST_reset_*, TEST_depnotif_*, plus 1 UI-only uitest<ts>). Sent ~6 real SMTP emails (registration OTPs, welcome, reset, deposit user+admin, withdrawal user+admin) — total well under any throttling concern.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend OTP / forgot-reset / deposit+withdrawal email notification suite is at /app/backend/tests/test_cavi_otp_email.py. It reads OTP and reset tokens directly from MongoDB (collections pending_registrations and password_reset_tokens) — no inbox required. Email dispatch is verified by tailing /var/log/supervisor/backend.*.log for 'Email sent to ...' INFO lines and matching subject substrings ('Welcome to CAVI', 'Reset your CAVI password', 'Your CAVI deposit was recorded', '[CAVI] New deposit', 'Your CAVI withdrawal request is pending', '[CAVI] Withdrawal approval needed'). For UI re-verification of wallet modal, look for the <w3m-modal> custom element appearing in the DOM after clicking [data-testid='wallet-connect-btn']. Note: in this preview environment Reown's remote config endpoint (config.reown.com) is unreachable and AppKit logs a warning + uses local defaults — modal still opens and lists wallets via Search.",
+  "rca of the issue": "No bugs found this iteration."
+}

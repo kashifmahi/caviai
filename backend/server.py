@@ -48,6 +48,7 @@ SMTP_USER = os.environ.get('SMTP_USER')
 SMTP_PASS = os.environ.get('SMTP_PASS')
 SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER or SUPPORT_EMAIL)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
+ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL')
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
 
@@ -153,6 +154,80 @@ async def send_email(to_email: str, subject: str, html_body: str, text_body: str
 
 def gen_otp() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
+
+def fire_email(to_email: str, subject: str, html_body: str, text_body: str):
+    """Schedule an email without blocking the request. Safely ignores missing recipients."""
+    if not to_email:
+        return
+    asyncio.create_task(send_email(to_email, subject, html_body, text_body))
+
+def _money(v) -> str:
+    try:
+        return f"${float(v):,.2f}"
+    except Exception:
+        return f"${v}"
+
+def notify_deposit(user: dict, amount: float, network: str, roi_start: str):
+    amt = _money(amount)
+    if user.get("email"):
+        html = _email_shell(
+            "Deposit received",
+            f"<p>Hi {user.get('username','there')}, we've recorded your deposit on CAVI.</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{network}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>ROI starts</td><td style='color:#fff;'>{roi_start}</td></tr>"
+            f"</table>"
+            f"<p>Your deposit base only grows — ROI is paid daily and never compounded.</p>",
+        )
+        fire_email(user["email"], "Your CAVI deposit was recorded", html,
+                   f"Your deposit of {amt} on {network} was recorded. ROI starts {roi_start}.")
+    if ADMIN_NOTIFY_EMAIL:
+        html = _email_shell(
+            "New deposit alert",
+            f"<p>A user just made a deposit on CAVI.</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>User</td><td style='color:#fff;'>{user.get('username')} ({user.get('email') or user.get('walletAddress')})</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{network}</td></tr>"
+            f"</table>",
+        )
+        fire_email(ADMIN_NOTIFY_EMAIL, f"[CAVI] New deposit {amt} from {user.get('username')}", html,
+                   f"New deposit {amt} ({network}) by {user.get('username')} ({user.get('email')}).")
+
+def notify_withdrawal(user: dict, wd: dict):
+    amt = _money(wd["amount"])
+    net = _money(wd["netAmount"])
+    if user.get("email"):
+        html = _email_shell(
+            "Withdrawal request received",
+            f"<p>Hi {user.get('username','there')}, we've received your withdrawal request. It's now pending admin approval.</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>You receive</td><td style='color:#fff;'>{net}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{wd['network']}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>To</td><td style='color:#fff;word-break:break-all;'>{wd['destinationAddress']}</td></tr>"
+            f"</table>"
+            f"<p>You'll be notified once it's processed.</p>",
+        )
+        fire_email(user["email"], "Your CAVI withdrawal request is pending", html,
+                   f"Withdrawal request of {amt} ({wd['network']}) received and pending approval.")
+    if ADMIN_NOTIFY_EMAIL:
+        link = f"{FRONTEND_URL}/admin" if FRONTEND_URL else "the admin panel"
+        html = _email_shell(
+            "Withdrawal approval needed",
+            f"<p>A withdrawal request needs your approval on CAVI.</p>"
+            f"<table style='margin:16px 0;font-size:14px;'>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>User</td><td style='color:#fff;'>{user.get('username')} ({user.get('email') or user.get('walletAddress')})</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Amount</td><td style='color:#fff;font-weight:700;'>{amt}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Net payout</td><td style='color:#fff;'>{net}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>Network</td><td style='color:#fff;'>{wd['network']}</td></tr>"
+            f"<tr><td style='color:#94a3b8;padding:4px 16px 4px 0;'>To</td><td style='color:#fff;word-break:break-all;'>{wd['destinationAddress']}</td></tr>"
+            f"</table>"
+            f"<p style='margin-top:20px;'><a href='{link}' style='background:#6c63ff;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;display:inline-block;'>Review in admin panel</a></p>",
+        )
+        fire_email(ADMIN_NOTIFY_EMAIL, f"[CAVI] Withdrawal approval needed — {amt} from {user.get('username')}", html,
+                   f"Withdrawal {amt} ({wd['network']}) by {user.get('username')} needs approval. Review at {link}")
 
 
 # ----------------------------------------------------------------------------
@@ -402,6 +477,15 @@ async def verify_otp(body: VerifyOtpReq):
     }
     await db.users.insert_one(dict(doc))
     await db.pending_registrations.delete_one({"email": email})
+    welcome_html = _email_shell(
+        "Welcome to CAVI",
+        f"<p>Hi {doc['username']}, your email is verified and your account is live. 🎉</p>"
+        f"<p>You can now create deposit wallets across ETH, SOL, BNB and TRC20, and start earning "
+        f"deposit-only ROI that's paid daily and never compounded.</p>"
+        f"<p style='margin-top:20px;'><a href='{FRONTEND_URL}/app' style='background:#6c63ff;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;display:inline-block;'>Go to your dashboard</a></p>",
+    )
+    fire_email(email, "Welcome to CAVI 🎉", welcome_html,
+               f"Welcome to CAVI, {doc['username']}! Your account is now verified and live.")
     return {"token": create_access_token(uid), "user": public_user(doc)}
 
 @api.post("/auth/resend-otp")
@@ -464,6 +548,16 @@ async def reset_password(body: ResetPasswordReq):
         raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
     await db.users.update_one({"id": doc["userId"]}, {"$set": {"password": hash_password(body.password)}})
     await db.password_reset_tokens.update_one({"_id": doc["_id"]}, {"$set": {"used": True}})
+    target = await db.users.find_one({"id": doc["userId"]}, {"_id": 0})
+    if target and target.get("email"):
+        alert_html = _email_shell(
+            "Your password was changed",
+            f"<p>Hi {target.get('username','there')}, your CAVI password was just changed.</p>"
+            f"<p>If this was you, no action is needed. If you didn't do this, please reset your password "
+            f"immediately and contact us at {SUPPORT_EMAIL}.</p>",
+        )
+        fire_email(target["email"], "Security alert: your CAVI password was changed", alert_html,
+                   f"Your CAVI password was changed. If this wasn't you, contact {SUPPORT_EMAIL} immediately.")
     return {"ok": True}
 
 @api.post("/auth/login")
@@ -623,6 +717,7 @@ async def simulate_deposit(wallet_id: str, body: DepositReq, user: dict = Depend
     await db.users.update_one({"id": user["id"]}, {"$inc": {"depositBase": body.amount, "depositCount": 1}})
     fin = await user_financials(user["id"])
     remaining = max(0, MAX_DEPOSITS - (count + 1))
+    notify_deposit(user, body.amount, wallet["network"], start_date)
     return {"financials": fin, "roiStartDate": start_date, "attemptsRemaining": remaining}
 
 @api.get("/wallets/{wallet_id}/deposits")
@@ -678,6 +773,7 @@ async def request_withdrawal(body: WithdrawalReq, user: dict = Depends(get_curre
     }
     await db.withdrawals.insert_one(dict(doc))
     doc.pop("_id", None)
+    notify_withdrawal(user, doc)
     return {"withdrawal": doc, "penaltyApplied": penalty > 0}
 
 @api.get("/withdrawals")

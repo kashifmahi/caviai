@@ -96,6 +96,17 @@ export function AuthProvider({ children }) {
     await refresh();
   };
 
+  // Sign-in for an already-connected wallet (e.g. via WalletConnect/AppKit).
+  // signMessageFn(message) -> signature string in the format the backend expects.
+  const walletSignIn = async (chain, address, signMessageFn) => {
+    const { data: nonceData } = await api.post("/auth/wallet-nonce", { address, chain });
+    const message = nonceData.message;
+    const signature = await signMessageFn(message);
+    const { data } = await api.post("/auth/wallet-login", { address, message, signature, chain });
+    setSession(data);
+    await refresh();
+  };
+
   const logout = () => {
     localStorage.removeItem("cavi_token");
     setUser(false);
@@ -109,7 +120,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, logout, refresh, updateUsername }}
+      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, walletSignIn, logout, refresh, updateUsername }}
     >
       {children}
     </AuthContext.Provider>
