@@ -185,10 +185,6 @@ function ROICalculator() {
         </div>
 
         <div className="border-t border-white/10 pt-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-white/50 text-sm">Shown daily rate</span>
-            <span className="ff-mono text-sm font-bold text-[#f0a500]">0.4% – 1.0%</span>
-          </div>
           <div className="flex justify-between items-center">
             <span className="text-white/50 text-sm">Projected returns</span>
             <motion.span key={projected} initial={{ y: 6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="ff-mono text-3xl font-bold text-[#00d4a0]" data-testid="calc-projected">
@@ -196,8 +192,8 @@ function ROICalculator() {
             </motion.span>
           </div>
           <p className="text-[11px] text-white/30 mt-3 leading-relaxed">
-            Returns are calculated on your deposit base only and never compound. Figures shown are a
-            conservative estimate (50% of typical daily returns); actual rates vary.
+            Returns are generated from validator-node staking and calculated on your deposit base only.
+            The figures shown are conservative estimates — actual daily rewards vary with network conditions.
           </p>
         </div>
       </div>
