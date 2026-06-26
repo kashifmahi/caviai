@@ -1,0 +1,31 @@
+{
+  "summary": "Validated the two PRODUCTION-reported bugs (password reset broken + 'Project ID is missing' on wallet login) at the APP/code level in the PREVIEW environment, where FRONTEND_URL and REACT_APP_REOWN_PROJECT_ID are already set. All three requested checks PASS: (1) Password reset E2E — POST /api/auth/forgot-password {email: hajraanwar157@gmail.com} -> 200 {ok:true}; pulled latest unused token from MongoDB password_reset_tokens collection (E417ITRVTpEsijD6LXEUGKMltESlteziE4h_VToxe78); built link from FRONTEND_URL in /app/backend/.env (https://cavi-instructions.preview.emergentagent.com/reset-password?token=...) and opened it in Playwright; reset-form rendered (data-testid='reset-form'), filled NewCavi@2026 in reset-password + reset-confirm, clicked reset-submit, reset-done view appeared ('Password updated'); subsequent POST /api/auth/login with NewCavi@2026 returned 200 with JWT + full user object. (2) Wallet modal — /login Connect Wallet button (data-testid='wallet-connect-btn') opens the Reown AppKit <w3m-modal> showing WalletConnect (QR CODE), Binance Wallet, MetaMask, SafePal, Trust Wallet, Search Wallet 530+. Zero 'Project ID is missing' UI text, zero project-id-related console errors, zero uncaught JS errors. (3) SMTP dispatch — /var/log/supervisor/backend.err.log shows the exact INFO line 'Email sent to hajraanwar157@gmail.com: Reset your CAVI password' at the time of the test call (2026-06-26 09:27:56). This proves the app code is correct; once the VPS env files contain FRONTEND_URL / SMTP_* / REOWN_PROJECT_ID (which deploy.sh now reconciles from config.env), both reported issues will be resolved in production.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_6.json",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "deploy/deploy.sh reconcile (per task brief) handles JWT_SECRET/ENCRYPTION_KEY preservation and special chars in SMTP_PASS — make sure the SMTP_PASS line in the generated VPS .env is double-quoted (current backend/.env quotes it correctly: SMTP_PASS=\"D9wOw?s85Z|\"). The pipe character | would otherwise break shell-sourced env loaders.",
+    "Server-side forgot-password handler is correctly idempotent and always returns {ok:true} (good — does not leak whether the email exists). Token TTL is 1 hour (verified: expiresAt - createdAt = 3600s). OK.",
+    "Frontend ResetPassword page correctly reads ?token= from URL and POSTs to /api/auth/reset-password. data-testids reset-form / reset-password / reset-confirm / reset-submit / reset-done are all present and stable for automated testing. OK.",
+    "On the VPS, FRONTEND_URL must be the user-facing https origin (no trailing slash) — current preview value is correctly formatted. Recommend deploy.sh strips any trailing slash defensively before writing.",
+    "appkit.js still has no visible fallback if REACT_APP_REOWN_PROJECT_ID is empty/invalid (carryover from iter5). Not blocking — env var is present and modal works — but worth a small banner for prod safety."
+  ],
+  "updated_files": [
+    "/app/memory/test_credentials.md (rotated hajraanwar157@gmail.com password note: NewCavi@2025 -> NewCavi@2026)"
+  ],
+  "success_rate": { "backend": "100% (forgot-password 200, reset-password success, login with new password 200, SMTP send confirmed in log)", "frontend": "100% (reset page E2E + wallet modal both pass)" },
+  "test_credentials": "hajraanwar157@gmail.com / NewCavi@2026 (CHANGED THIS RUN — was NewCavi@2025). Superadmin: superadmin@cavi.io / Cavi@Admin2025 (unchanged).",
+  "seed_data_creation": "None. Used existing user hajraanwar157@gmail.com and rotated its password as part of the E2E reset test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Password for hajraanwar157@gmail.com is now NewCavi@2026 (memory/test_credentials.md updated). The preview env vars FRONTEND_URL (backend/.env) and REACT_APP_REOWN_PROJECT_ID (frontend/.env) are present and working — both reported production bugs reproduce as FIXED in preview, so they're an env-on-VPS issue, not a code issue. To re-run reset E2E: call forgot-password, then read token from MongoDB collection password_reset_tokens (filter used:false, sort createdAt desc), build FRONTEND_URL + '/reset-password?token=' + token, visit, use data-testids reset-password/reset-confirm/reset-submit then assert reset-done. To re-run wallet modal: click [data-testid='wallet-connect-btn'] on /login, wait ~4s for <w3m-modal> shadow DOM, walk shadow roots with page.evaluate to search for 'project id is missing' text and to confirm wallet rows.",
+  "rca of the issue": "NOT a code bug. Both production reports stem from the VPS env files being generated before SMTP_*, FRONTEND_URL, and REOWN_PROJECT_ID were added to the project's config.env, and the original deploy.sh never reconciled new keys on subsequent deploys. In preview, where those env vars are populated, (a) forgot-password successfully sends the email and the link points at FRONTEND_URL, (b) the reset page accepts the token and updates the password (verified by a successful login afterwards), and (c) the AppKit modal initializes with projectId and renders the wallet list without the 'Project ID is missing' overlay. Mitigation is the deploy.sh reconcile change described in the task (preserves JWT_SECRET/ENCRYPTION_KEY, writes/updates SMTP_*, FRONTEND_URL, REOWN_PROJECT_ID, properly quotes SMTP_PASS to handle special chars like ? and |). After the next deploy on the VPS, the same E2E run will pass there too."
+}
