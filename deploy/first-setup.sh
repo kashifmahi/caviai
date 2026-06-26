@@ -65,6 +65,7 @@ SMTP_PORT="${SMTP_PORT:-465}"
 SMTP_USER="${SMTP_USER:-}"
 SMTP_PASS="${SMTP_PASS:-}"
 SMTP_FROM="${SMTP_FROM:-${SMTP_USER:-}}"
+ADMIN_NOTIFY_EMAIL="${ADMIN_NOTIFY_EMAIL:-}"
 FRONTEND_URL="https://${DOMAIN}"
 EOF
 echo "    -> backend/.env created. KEEP ENCRYPTION_KEY SAFE & NEVER CHANGE IT."
@@ -84,7 +85,10 @@ systemctl --no-pager status cavi-backend | head -n 5 || true
 
 echo "==> [7/8] Building frontend..."
 cd "${APP_DIR}/frontend"
-echo "REACT_APP_BACKEND_URL=https://${DOMAIN}" > .env
+cat > .env <<EOF
+REACT_APP_BACKEND_URL=https://${DOMAIN}
+REACT_APP_REOWN_PROJECT_ID=${REOWN_PROJECT_ID:-}
+EOF
 yarn install
 yarn build
 

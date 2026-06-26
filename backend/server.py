@@ -517,6 +517,8 @@ async def forgot_password(body: ForgotPasswordReq):
     if user and user.get("loginType") == "email":
         token = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
+        await db.password_reset_tokens.update_many(
+            {"userId": user["id"], "used": False}, {"$set": {"used": True}})
         await db.password_reset_tokens.insert_one({
             "id": str(uuid.uuid4()), "userId": user["id"], "token": token,
             "expiresAt": now + timedelta(hours=1), "used": False,
@@ -537,7 +539,6 @@ async def forgot_password(body: ForgotPasswordReq):
 
 @api.post("/auth/reset-password")
 async def reset_password(body: ResetPasswordReq):
-    validate_password_strength(body.password)
     doc = await db.password_reset_tokens.find_one({"token": body.token})
     if not doc or doc.get("used"):
         raise HTTPException(status_code=400, detail="Invalid or already-used reset link.")
@@ -546,6 +547,7 @@ async def reset_password(body: ResetPasswordReq):
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+    validate_password_strength(body.password)
     await db.users.update_one({"id": doc["userId"]}, {"$set": {"password": hash_password(body.password)}})
     await db.password_reset_tokens.update_one({"_id": doc["_id"]}, {"$set": {"used": True}})
     target = await db.users.find_one({"id": doc["userId"]}, {"_id": 0})
