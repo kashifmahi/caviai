@@ -29,7 +29,13 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - P2: Email notifications (SendGrid) for withdrawal approvals; rate-limit/lockout on login.
 - P2: Split server.py into routers; production CORS allowlist; Phase 10 deployment (Netlify + Railway + Atlas).
 
-## Iteration 3 (2026-06-19) — Business rules
+## Iteration 4 (2026-06-26) — Auth security enhancements
+- ✅ Strong password validation: min 8 + upper + lower + number + special. Enforced in backend (`validate_password_strength`) and frontend (`PasswordStrength.jsx` live meter on signup & reset).
+- ✅ Email OTP on registration: register now stores a `pending_registrations` doc + 6-digit OTP (10 min expiry), emails it via Hostinger SMTP; account is created only after `/auth/verify-otp`. Resend supported (`/auth/resend-otp`). Signup.js is now 2-step (form → OTP).
+- ✅ Forgot/Reset password: `/auth/forgot-password` emails a secure `secrets.token_urlsafe(32)` reset link (1h expiry, single-use, anti-enumeration); `/auth/reset-password` validates token+strength. New pages ForgotPassword.js, ResetPassword.js + routes; "Forgot password?" link on Login.
+- ✅ SMTP via stdlib smtplib (SMTP_SSL 465) — no extra pip deps. Env: SMTP_HOST/PORT/USER/PASS/FROM, FRONTEND_URL. Deploy: config.env.example + first-setup.sh write these to backend/.env.
+- ✅ TTL indexes: pending_registrations (1h), password_reset_tokens (1h).
+- Tested: full backend flow via curl — weak pw rejected, OTP email delivered live, verify-otp creates user, forgot-password reset email delivered live, reset works + token single-use + login with new pw. Frontend smoke screenshots OK.
 - ✅ One wallet per network (max 4), immutable; UI gates owned networks, backend 400 on duplicate.
 - ✅ Wallet detail modal: per-wallet deposit ledger (amount, time, ROI active / "starts <date>").
 - ✅ Deposit abuse guard: confirm dialog each deposit; 3 attempts allowed; 4th → 403 + securityFlag + "contact admin" banner. Admin "Security" tab lists flagged users; Remove flag resets attempts (audit logged).
