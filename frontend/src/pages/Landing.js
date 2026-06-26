@@ -383,39 +383,45 @@ function PlatformYield({ deposited }) {
   );
 }
 
-function AnimatedPct({ value, show }) {
-  const [v, setV] = useState(0);
+function driftAllocation(tick) {
+  const r = (n) => { const s = Math.sin((tick * 7.13 + n) * 127.1) * 43758.5453; return s - Math.floor(s); };
+  const raw = [34 + r(1) * 9, 27 + r(2) * 9, 12 + r(3) * 7, 8 + r(4) * 6];
+  const tot = raw.reduce((a, b) => a + b, 0);
+  return raw.map((v) => (v / tot) * 100);
+}
+
+function SmoothPct({ value }) {
+  const [v, setV] = useState(value);
+  const ref = useRef(value);
   useEffect(() => {
-    if (!show) { setV(0); return; }
-    let raf; const s = performance.now();
-    const tick = (n) => {
-      const p = Math.min((n - s) / 650, 1);
-      setV(value * (1 - Math.pow(1 - p, 3)));
-      if (p < 1) raf = requestAnimationFrame(tick);
+    let raf;
+    const step = () => {
+      ref.current += (value - ref.current) * 0.12;
+      if (Math.abs(value - ref.current) < 0.05) ref.current = value;
+      setV(ref.current);
+      if (ref.current !== value) raf = requestAnimationFrame(step);
     };
-    raf = requestAnimationFrame(tick);
+    raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [show, value]);
+  }, [value]);
   return <>{Math.round(v)}%</>;
 }
 
 function AllocationCard({ deposited }) {
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: "-80px" });
-  const alloc = dailyAllocation();
+  const inView = useInView(ref, { margin: "-80px" });
   const STEPS = CHAIN_META.length;
-  const [revealed, setRevealed] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!inView) return;
-    let i = 0; setRevealed(0);
-    const id = setInterval(() => { i += 1; setRevealed(i); if (i >= STEPS + 1) clearInterval(id); }, 680);
+    const id = setInterval(() => setTick((t) => t + 1), 3000);
     return () => clearInterval(id);
-  }, [inView, STEPS]);
+  }, [inView]);
 
+  const alloc = driftAllocation(tick);
   const R = 44, C = 2 * Math.PI * R;
   let acc = 0; const offsets = alloc.map((p) => { const o = acc; acc += p; return o; });
-  const activeIdx = revealed >= 1 && revealed <= STEPS ? revealed - 1 : -1;
-  const done = revealed > STEPS;
+  const activeIdx = tick % STEPS;
 
   return (
     <motion.div
@@ -424,10 +430,18 @@ function AllocationCard({ deposited }) {
       whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300, damping: 22 }}
       data-testid="allocation-card"
     >
-      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-[#f0a500]/10 blur-3xl" />
+      <motion.div
+        className="absolute -top-16 -right-16 w-40 h-40 rounded-full blur-3xl"
+        animate={{ backgroundColor: `${CHAIN_META[activeIdx].color}22` }}
+        transition={{ duration: 1 }}
+      />
       <div className="flex items-center gap-2 mb-1 relative">
         <span className="w-7 h-7 rounded-lg bg-[#f0a500]/15 flex items-center justify-center"><Activity className="w-3.5 h-3.5 text-[#f0a500]" /></span>
         <span className="overline text-white/40">Allocation at a glance</span>
+        <span className="ml-auto overline text-[#00d4a0] inline-flex items-center gap-1.5">
+          <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00d4a0] opacity-75" /><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#00d4a0]" /></span>
+          live
+        </span>
       </div>
       <p className="text-white/40 text-xs mb-6 relative">See exactly how your value is spread across chains and assets, in plain language.</p>
 
@@ -437,59 +451,51 @@ function AllocationCard({ deposited }) {
             <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" />
             {CHAIN_META.map((c, i) => {
               const len = (C * alloc[i]) / 100;
-              const visible = i < Math.min(revealed, STEPS);
               const isActive = i === activeIdx;
               return (
                 <motion.circle
                   key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeLinecap="round"
-                  strokeDashoffset={-(C * offsets[i]) / 100}
-                  initial={{ strokeDasharray: `0 ${C}`, strokeWidth: 11 }}
-                  animate={{ strokeDasharray: visible ? `${len} ${C - len}` : `0 ${C}`, strokeWidth: isActive ? 14 : 11, filter: isActive ? `drop-shadow(0 0 6px ${c.color})` : "none" }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
+                  initial={false}
+                  animate={{
+                    strokeDasharray: `${len} ${C - len}`,
+                    strokeDashoffset: -(C * offsets[i]) / 100,
+                    strokeWidth: isActive ? 14 : 10,
+                    filter: isActive ? `drop-shadow(0 0 6px ${c.color})` : "none",
+                  }}
+                  transition={{ duration: 1.1, ease: "easeInOut" }}
                 />
               );
             })}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2">
             <AnimatePresence mode="wait">
-              {done ? (
-                <motion.div key="done" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                  <div className="ff-mono text-xl font-black text-white">100%</div>
-                  <div className="text-[9px] uppercase tracking-wider text-white/40">allocated</div>
-                </motion.div>
-              ) : activeIdx >= 0 ? (
-                <motion.div key={activeIdx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}>
-                  <div className="ff-mono text-2xl font-black" style={{ color: CHAIN_META[activeIdx].color }}>{alloc[activeIdx].toFixed(0)}%</div>
-                  <div className="text-[9px] uppercase tracking-wider text-white/50">{CHAIN_META[activeIdx].label}</div>
-                </motion.div>
-              ) : (
-                <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 0.5 }}>
-                  <div className="ff-mono text-base text-white/40">4 chains</div>
-                </motion.div>
-              )}
+              <motion.div key={activeIdx}
+                initial={{ opacity: 0, y: 8, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.9 }}
+                transition={{ duration: 0.4 }}>
+                <div className="ff-mono text-2xl font-black" style={{ color: CHAIN_META[activeIdx].color }}>{Math.round(alloc[activeIdx])}%</div>
+                <div className="text-[9px] uppercase tracking-wider text-white/50">{CHAIN_META[activeIdx].label}</div>
+              </motion.div>
             </AnimatePresence>
           </div>
         </div>
 
         <div className="space-y-2 flex-1">
           {CHAIN_META.map((c, i) => {
-            const shown = i < revealed;
             const isActive = i === activeIdx;
             return (
               <motion.div
                 key={c.key}
-                className="flex items-center justify-between text-sm rounded-md px-2 py-1.5 -mx-2 transition-colors"
-                initial={{ opacity: 0, x: 14 }}
-                animate={{ opacity: shown ? 1 : 0.25, x: shown ? 0 : 14, backgroundColor: isActive ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0)" }}
+                className="flex items-center justify-between text-sm rounded-md px-2 py-1.5 -mx-2"
+                animate={{ backgroundColor: isActive ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0)" }}
                 transition={{ duration: 0.4 }}
               >
                 <span className="flex items-center gap-2 text-white/70">
                   <motion.span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }}
-                    animate={{ scale: isActive ? 1.4 : 1, boxShadow: shown ? `0 0 8px ${c.color}aa` : "none" }} />
+                    animate={{ scale: isActive ? 1.45 : 1, boxShadow: `0 0 8px ${c.color}aa` }} transition={{ duration: 0.4 }} />
                   {c.label}
                 </span>
-                <span className="ff-mono text-xs tabular-nums" style={{ color: shown ? c.color : "rgba(255,255,255,0.3)" }}>
-                  <AnimatedPct value={alloc[i]} show={shown} />
+                <span className="ff-mono text-xs tabular-nums" style={{ color: c.color }}>
+                  <SmoothPct value={alloc[i]} />
                 </span>
               </motion.div>
             );
