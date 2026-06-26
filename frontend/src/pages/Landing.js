@@ -383,58 +383,117 @@ function PlatformYield({ deposited }) {
   );
 }
 
+function AnimatedPct({ value, show }) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (!show) { setV(0); return; }
+    let raf; const s = performance.now();
+    const tick = (n) => {
+      const p = Math.min((n - s) / 650, 1);
+      setV(value * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [show, value]);
+  return <>{Math.round(v)}%</>;
+}
+
 function AllocationCard({ deposited }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
   const alloc = dailyAllocation();
-  const R = 42, C = 2 * Math.PI * R;
-  let offset = 0;
+  const STEPS = CHAIN_META.length;
+  const [revealed, setRevealed] = useState(0);
+  useEffect(() => {
+    if (!inView) return;
+    let i = 0; setRevealed(0);
+    const id = setInterval(() => { i += 1; setRevealed(i); if (i >= STEPS + 1) clearInterval(id); }, 680);
+    return () => clearInterval(id);
+  }, [inView, STEPS]);
+
+  const R = 44, C = 2 * Math.PI * R;
+  let acc = 0; const offsets = alloc.map((p) => { const o = acc; acc += p; return o; });
+  const activeIdx = revealed >= 1 && revealed <= STEPS ? revealed - 1 : -1;
+  const done = revealed > STEPS;
+
   return (
     <motion.div
-      className="glass rounded-2xl p-6 h-full card-hover"
+      ref={ref}
+      className="glass rounded-2xl p-6 h-full card-hover relative overflow-hidden"
       whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300, damping: 22 }}
       data-testid="allocation-card"
     >
-      <div className="flex items-center gap-2 mb-1">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-[#f0a500]/10 blur-3xl" />
+      <div className="flex items-center gap-2 mb-1 relative">
         <span className="w-7 h-7 rounded-lg bg-[#f0a500]/15 flex items-center justify-center"><Activity className="w-3.5 h-3.5 text-[#f0a500]" /></span>
         <span className="overline text-white/40">Allocation at a glance</span>
       </div>
-      <p className="text-white/40 text-xs mb-5">How staked value is spread across our four chains.</p>
-      <div className="flex items-center gap-6">
-        <div className="relative w-28 h-28 shrink-0">
-          <svg viewBox="0 0 100 100" className="w-28 h-28 -rotate-90">
+      <p className="text-white/40 text-xs mb-6 relative">See exactly how your value is spread across chains and assets, in plain language.</p>
+
+      <div className="flex items-center gap-6 relative">
+        <div className="relative w-32 h-32 shrink-0">
+          <svg viewBox="0 0 100 100" className="w-32 h-32 -rotate-90">
             <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="11" />
             {CHAIN_META.map((c, i) => {
               const len = (C * alloc[i]) / 100;
-              const thisOffset = offset;
-              offset += len;
+              const visible = i < Math.min(revealed, STEPS);
+              const isActive = i === activeIdx;
               return (
                 <motion.circle
-                  key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeWidth="11" strokeLinecap="round"
-                  strokeDashoffset={-thisOffset}
-                  initial={{ strokeDasharray: `0 ${C}`, opacity: 0 }}
-                  animate={{ strokeDasharray: `${len} ${C - len}`, opacity: 1 }}
-                  transition={{ duration: 1, delay: 0.2 + i * 0.18, ease: "easeOut" }}
+                  key={c.key} cx="50" cy="50" r={R} fill="none" stroke={c.color} strokeLinecap="round"
+                  strokeDashoffset={-(C * offsets[i]) / 100}
+                  initial={{ strokeDasharray: `0 ${C}`, strokeWidth: 11 }}
+                  animate={{ strokeDasharray: visible ? `${len} ${C - len}` : `0 ${C}`, strokeWidth: isActive ? 14 : 11, filter: isActive ? `drop-shadow(0 0 6px ${c.color})` : "none" }}
+                  transition={{ duration: 0.6, ease: "easeOut" }}
                 />
               );
             })}
           </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="ff-mono text-base font-bold text-white">4</span>
-            <span className="text-[9px] uppercase tracking-wider text-white/40">chains</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2">
+            <AnimatePresence mode="wait">
+              {done ? (
+                <motion.div key="done" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                  <div className="ff-mono text-xl font-black text-white">100%</div>
+                  <div className="text-[9px] uppercase tracking-wider text-white/40">allocated</div>
+                </motion.div>
+              ) : activeIdx >= 0 ? (
+                <motion.div key={activeIdx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}>
+                  <div className="ff-mono text-2xl font-black" style={{ color: CHAIN_META[activeIdx].color }}>{alloc[activeIdx].toFixed(0)}%</div>
+                  <div className="text-[9px] uppercase tracking-wider text-white/50">{CHAIN_META[activeIdx].label}</div>
+                </motion.div>
+              ) : (
+                <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 0.5 }}>
+                  <div className="ff-mono text-base text-white/40">4 chains</div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
+
         <div className="space-y-2 flex-1">
-          {CHAIN_META.map((c, i) => (
-            <motion.div
-              key={c.key} className="flex items-center justify-between text-sm rounded-md px-2 py-1 -mx-2 hover:bg-white/5 transition-colors"
-              initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.1 }}
-            >
-              <span className="flex items-center gap-2 text-white/70">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color, boxShadow: `0 0 8px ${c.color}88` }} />
-                {c.label} · {alloc[i].toFixed(0)}%
-              </span>
-              <span className="ff-mono text-white/50 text-xs tabular-nums">${((deposited * alloc[i]) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-            </motion.div>
-          ))}
+          {CHAIN_META.map((c, i) => {
+            const shown = i < revealed;
+            const isActive = i === activeIdx;
+            return (
+              <motion.div
+                key={c.key}
+                className="flex items-center justify-between text-sm rounded-md px-2 py-1.5 -mx-2 transition-colors"
+                initial={{ opacity: 0, x: 14 }}
+                animate={{ opacity: shown ? 1 : 0.25, x: shown ? 0 : 14, backgroundColor: isActive ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0)" }}
+                transition={{ duration: 0.4 }}
+              >
+                <span className="flex items-center gap-2 text-white/70">
+                  <motion.span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }}
+                    animate={{ scale: isActive ? 1.4 : 1, boxShadow: shown ? `0 0 8px ${c.color}aa` : "none" }} />
+                  {c.label}
+                </span>
+                <span className="ff-mono text-xs tabular-nums" style={{ color: shown ? c.color : "rgba(255,255,255,0.3)" }}>
+                  <AnimatedPct value={alloc[i]} show={shown} />
+                </span>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </motion.div>
