@@ -461,7 +461,7 @@ function AllocationCard({ deposited }) {
           live
         </span>
       </div>
-      <p className="text-white/40 text-xs mb-7 relative">See exactly how your value is spread across chains and assets, in plain language.</p>
+      <p className="text-white/40 text-xs mb-7 relative">See where your assets are working — your staked value across ETH, SOL, BNB, and TRC20, broken down in plain language.</p>
 
       <div className="flex-1 flex flex-col items-center justify-center relative">
         <div className="relative w-44 h-44">
