@@ -61,6 +61,11 @@ Build CAVI, a multi-chain crypto investment platform with self-custody deposit w
 - ✅ Dashboard Overview redesign: framer-motion staggered stat cards, recharts ROI AreaChart + Deposits-by-Network donut, animated quick-action buttons. Settings nav link + avatar in sidebar (DashboardLayout).
 - Tested: testing_agent iteration_7 — backend 14/14 pytest, frontend 100% (overview testids, settings nav, profile save+persist across reload, avatar upload+display, wallet modal regression). No bugs.
 - Backlog from review (non-blocking): avatar magic-byte sniff; split server.py into routers.
+
+## Iteration 10 (2026-06-26) — Security tab (change password + last login)
+- ✅ Backend: POST /api/auth/change-password (email accounts only) — verifies current bcrypt password, enforces strong new password, rejects reuse, sends "password was changed" alert email. Login (email + wallet) now records `lastLoginAt` (ISO), returned in user object + /api/auth/me.
+- ✅ Frontend: ProfilePage split into Profile / Security tabs. Security tab shows last sign-in + change-password form (email users) or a "wallet = no password" note (wallet users). PasswordStrength meter on new password; AuthContext.changePassword.
+- Tested: testing_agent iteration_9 — backend 7/7 pytest (wrong/weak/same rejected, change+login+revert, wallet guard), frontend verified (tab switch, last-login date, mismatch blocks API call, profile-tab + overview regression). Credentials restored to NewCavi@2026.
 - ✅ Strong password validation: min 8 + upper + lower + number + special. Enforced in backend (`validate_password_strength`) and frontend (`PasswordStrength.jsx` live meter on signup & reset).
 - ✅ Email OTP on registration: register now stores a `pending_registrations` doc + 6-digit OTP (10 min expiry), emails it via Hostinger SMTP; account is created only after `/auth/verify-otp`. Resend supported (`/auth/resend-otp`). Signup.js is now 2-step (form → OTP).
 - ✅ Forgot/Reset password: `/auth/forgot-password` emails a secure `secrets.token_urlsafe(32)` reset link (1h expiry, single-use, anti-enumeration); `/auth/reset-password` validates token+strength. New pages ForgotPassword.js, ResetPassword.js + routes; "Forgot password?" link on Login.
