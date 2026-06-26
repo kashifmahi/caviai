@@ -8,8 +8,12 @@ load_dotenv(ROOT_DIR / '.env')
 import asyncio
 import logging
 import random
+import re
 import secrets
+import smtplib
+import ssl
 import uuid
+from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta, time as dtime
 
 import bcrypt
@@ -38,6 +42,12 @@ JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 ENCRYPTION_KEY = bytes.fromhex(os.environ['ENCRYPTION_KEY'])  # 32 bytes -> AES-256
 SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@cavi.solutions')
+SMTP_HOST = os.environ.get('SMTP_HOST')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '465'))
+SMTP_USER = os.environ.get('SMTP_USER')
+SMTP_PASS = os.environ.get('SMTP_PASS')
+SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER or SUPPORT_EMAIL)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 MAX_DISPLAY_DEPOSIT = 4_200_000  # cap for landing-page total deposit stat
 
@@ -87,6 +97,63 @@ def public_user(doc: dict) -> dict:
     doc.pop("_id", None)
     doc.pop("password", None)
     return doc
+
+# ----------------------------------------------------------------------------
+# Password strength + Email (SMTP)
+# ----------------------------------------------------------------------------
+PASSWORD_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$")
+PASSWORD_RULE = ("Password must be at least 8 characters and include an uppercase letter, "
+                 "a lowercase letter, a number, and a special character.")
+
+def validate_password_strength(password: str):
+    if not PASSWORD_RE.match(password or ""):
+        raise HTTPException(status_code=400, detail=PASSWORD_RULE)
+
+def _email_shell(title: str, body_html: str) -> str:
+    return f"""\
+<div style="background:#05080f;padding:32px 0;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:480px;margin:0 auto;background:#0b1120;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;">
+    <div style="padding:24px 32px;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:1px;">CAVI</span>
+    </div>
+    <div style="padding:32px;color:#cbd5e1;font-size:15px;line-height:1.6;">
+      <h1 style="color:#fff;font-size:22px;margin:0 0 16px;">{title}</h1>
+      {body_html}
+    </div>
+    <div style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.06);color:#64748b;font-size:12px;">
+      Deposit-only · Never compounded · CAVI<br/>If you didn't request this, you can safely ignore this email.
+    </div>
+  </div>
+</div>"""
+
+def _send_email_sync(to_email: str, subject: str, html_body: str, text_body: str):
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"CAVI <{SMTP_FROM}>"
+    msg["To"] = to_email
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context, timeout=25) as server:
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+
+async def send_email(to_email: str, subject: str, html_body: str, text_body: str) -> bool:
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASS):
+        logger.warning("SMTP not configured; email to %s skipped", to_email)
+        return False
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _send_email_sync, to_email, subject, html_body, text_body)
+        logger.info("Email sent to %s: %s", to_email, subject)
+        return True
+    except Exception as e:
+        logger.error("Email send to %s failed: %s", to_email, e)
+        return False
+
+def gen_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
 
 # ----------------------------------------------------------------------------
 # Auth dependencies
@@ -199,6 +266,20 @@ class LoginReq(BaseModel):
     email: EmailStr
     password: str
 
+class VerifyOtpReq(BaseModel):
+    email: EmailStr
+    otp: str
+
+class ResendOtpReq(BaseModel):
+    email: EmailStr
+
+class ForgotPasswordReq(BaseModel):
+    email: EmailStr
+
+class ResetPasswordReq(BaseModel):
+    token: str
+    password: str
+
 class WalletNonceReq(BaseModel):
     address: str
     chain: str  # 'evm' or 'solana'
@@ -266,18 +347,124 @@ async def user_financials(user_id: str) -> dict:
 @api.post("/auth/register")
 async def register(body: RegisterReq):
     email = body.email.lower()
+    validate_password_strength(body.password)
     if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    otp = gen_otp()
+    now = datetime.now(timezone.utc)
+    await db.pending_registrations.update_one(
+        {"email": email},
+        {"$set": {
+            "email": email, "username": body.username,
+            "password": hash_password(body.password),
+            "otp": otp, "otpExpiresAt": now + timedelta(minutes=10),
+            "attempts": 0, "createdAt": now,
+        }},
+        upsert=True,
+    )
+    html = _email_shell(
+        "Verify your email",
+        f"<p>Welcome to CAVI. Use the code below to verify your email and activate your account.</p>"
+        f"<p style='font-size:34px;font-weight:800;letter-spacing:8px;color:#6c63ff;margin:24px 0;'>{otp}</p>"
+        f"<p>This code expires in 10 minutes.</p>",
+    )
+    sent = await send_email(email, "Your CAVI verification code", html,
+                            f"Your CAVI verification code is {otp}. It expires in 10 minutes.")
+    return {"otpRequired": True, "email": email, "emailSent": sent}
+
+@api.post("/auth/verify-otp")
+async def verify_otp(body: VerifyOtpReq):
+    email = body.email.lower()
+    pending = await db.pending_registrations.find_one({"email": email})
+    if not pending:
+        raise HTTPException(status_code=400, detail="No pending registration found. Please sign up again.")
+    exp = pending["otpExpiresAt"]
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Verification code expired. Please request a new one.")
+    if pending.get("attempts", 0) >= 5:
+        raise HTTPException(status_code=429, detail="Too many incorrect attempts. Please request a new code.")
+    if body.otp.strip() != pending["otp"]:
+        await db.pending_registrations.update_one({"email": email}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+    if await db.users.find_one({"email": email}):
+        await db.pending_registrations.delete_one({"email": email})
         raise HTTPException(status_code=400, detail="Email already registered")
     uid = str(uuid.uuid4())
     doc = {
-        "id": uid, "username": body.username, "email": email,
-        "password": hash_password(body.password), "loginType": "email",
+        "id": uid, "username": pending["username"], "email": email,
+        "password": pending["password"], "loginType": "email",
         "walletAddress": None, "role": "user", "roiAllowed": True,
         "wdAllowed": True, "depositBase": 0.0, "depositCount": 0, "securityFlag": False,
+        "emailVerified": True,
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(dict(doc))
+    await db.pending_registrations.delete_one({"email": email})
     return {"token": create_access_token(uid), "user": public_user(doc)}
+
+@api.post("/auth/resend-otp")
+async def resend_otp(body: ResendOtpReq):
+    email = body.email.lower()
+    pending = await db.pending_registrations.find_one({"email": email})
+    if not pending:
+        raise HTTPException(status_code=400, detail="No pending registration found. Please sign up again.")
+    otp = gen_otp()
+    now = datetime.now(timezone.utc)
+    await db.pending_registrations.update_one(
+        {"email": email},
+        {"$set": {"otp": otp, "otpExpiresAt": now + timedelta(minutes=10), "attempts": 0}},
+    )
+    html = _email_shell(
+        "Verify your email",
+        f"<p>Here is your new verification code.</p>"
+        f"<p style='font-size:34px;font-weight:800;letter-spacing:8px;color:#6c63ff;margin:24px 0;'>{otp}</p>"
+        f"<p>This code expires in 10 minutes.</p>",
+    )
+    sent = await send_email(email, "Your CAVI verification code", html,
+                            f"Your new CAVI verification code is {otp}. It expires in 10 minutes.")
+    return {"ok": True, "emailSent": sent}
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordReq):
+    email = body.email.lower()
+    user = await db.users.find_one({"email": email})
+    if user and user.get("loginType") == "email":
+        token = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        await db.password_reset_tokens.insert_one({
+            "id": str(uuid.uuid4()), "userId": user["id"], "token": token,
+            "expiresAt": now + timedelta(hours=1), "used": False,
+            "createdAt": now,
+        })
+        link = f"{FRONTEND_URL}/reset-password?token={token}"
+        html = _email_shell(
+            "Reset your password",
+            f"<p>We received a request to reset your CAVI password. Click the button below to choose a new one.</p>"
+            f"<p style='margin:28px 0;'><a href='{link}' style='background:#6c63ff;color:#fff;text-decoration:none;"
+            f"padding:14px 28px;border-radius:8px;font-weight:700;display:inline-block;'>Reset password</a></p>"
+            f"<p style='font-size:13px;color:#94a3b8;'>Or paste this link into your browser:<br/>{link}</p>"
+            f"<p>This link expires in 1 hour. If you didn't request it, ignore this email.</p>",
+        )
+        await send_email(email, "Reset your CAVI password", html,
+                         f"Reset your CAVI password: {link} (expires in 1 hour)")
+    return {"ok": True}
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordReq):
+    validate_password_strength(body.password)
+    doc = await db.password_reset_tokens.find_one({"token": body.token})
+    if not doc or doc.get("used"):
+        raise HTTPException(status_code=400, detail="Invalid or already-used reset link.")
+    exp = doc["expiresAt"]
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+    await db.users.update_one({"id": doc["userId"]}, {"$set": {"password": hash_password(body.password)}})
+    await db.password_reset_tokens.update_one({"_id": doc["_id"]}, {"$set": {"used": True}})
+    return {"ok": True}
 
 @api.post("/auth/login")
 async def login(body: LoginReq):
@@ -798,6 +985,10 @@ async def startup():
     await db.users.create_index("id", unique=True)
     await db.users.create_index("walletAddress", sparse=True)
     await db.auth_nonces.create_index("expiresAt", expireAfterSeconds=0)
+    await db.pending_registrations.create_index("email", unique=True)
+    await db.pending_registrations.create_index("createdAt", expireAfterSeconds=3600)
+    await db.password_reset_tokens.create_index("token", unique=True)
+    await db.password_reset_tokens.create_index("expiresAt", expireAfterSeconds=3600)
     await seed_admin()
     await get_settings()
     asyncio.create_task(roi_scheduler())

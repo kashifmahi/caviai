@@ -107,6 +107,11 @@ export default function Login() {
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
+        <div className="text-right">
+          <Link to="/forgot-password" className="text-xs text-white/40 hover:text-[#6c63ff]" data-testid="goto-forgot">
+            Forgot password?
+          </Link>
+        </div>
         <button type="submit" disabled={loading} className="btn-finance w-full rounded-sm py-3 flex items-center justify-center gap-2" data-testid="login-submit">
           {loading && <Loader2 className="w-4 h-4 animate-spin" />} Log in
         </button>

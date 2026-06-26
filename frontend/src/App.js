@@ -7,6 +7,8 @@ import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import DashboardLayout from "@/components/DashboardLayout";
 import Overview from "@/pages/dashboard/Overview";
 import WalletsPage from "@/pages/dashboard/WalletsPage";
@@ -24,6 +26,8 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               path="/app"
               element={

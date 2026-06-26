@@ -52,8 +52,28 @@ export function AuthProvider({ children }) {
 
   const register = async (username, email, password) => {
     const { data } = await api.post("/auth/register", { username, email, password });
+    return data;
+  };
+
+  const verifyOtp = async (email, otp) => {
+    const { data } = await api.post("/auth/verify-otp", { email, otp });
     setSession(data);
     await refresh();
+  };
+
+  const resendOtp = async (email) => {
+    const { data } = await api.post("/auth/resend-otp", { email });
+    return data;
+  };
+
+  const forgotPassword = async (email) => {
+    const { data } = await api.post("/auth/forgot-password", { email });
+    return data;
+  };
+
+  const resetPassword = async (token, password) => {
+    const { data } = await api.post("/auth/reset-password", { token, password });
+    return data;
   };
 
   const walletAuth = async (chain, rdnsHint) => {
@@ -89,7 +109,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, financials, meta, loading, login, register, walletAuth, logout, refresh, updateUsername }}
+      value={{ user, financials, meta, loading, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, walletAuth, logout, refresh, updateUsername }}
     >
       {children}
     </AuthContext.Provider>
