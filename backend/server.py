@@ -419,15 +419,24 @@ def in_penalty_window() -> bool:
 # ----------------------------------------------------------------------------
 # ROI rate engine (hidden probability tiers)
 # ----------------------------------------------------------------------------
-def generate_roi_rate() -> float:
+DEFAULT_RATE_TIERS = {"low": [0.800, 0.990], "mid": [1.000, 1.300], "high": [1.301, 2.000]}
+DEFAULT_TIER_PROBS = {"low": 0.80, "mid": 0.15, "high": 0.05}
+
+def generate_roi_rate(settings: dict | None = None) -> float:
+    settings = settings or {}
+    tiers = settings.get("rateTiers") or DEFAULT_RATE_TIERS
+    probs = settings.get("tierProbs") or DEFAULT_TIER_PROBS
+    pl = float(probs.get("low", 0.80))
+    pm = float(probs.get("mid", 0.15))
     r = random.random()
-    if r < 0.80:
-        rate = random.uniform(0.800, 0.990)   # 80% chance: 0.8% - 0.99%
-    elif r < 0.95:
-        rate = random.uniform(1.000, 1.300)   # 15% chance: 1.0% - 1.3%
+    if r < pl:
+        lo, hi = tiers["low"]
+    elif r < pl + pm:
+        lo, hi = tiers["mid"]
     else:
-        rate = random.uniform(1.301, 2.000)   # 5% chance: 1.31% - 2.0%
-    return round(rate / 2, 3)   # payout halved: users receive 50% of the tier rate
+        lo, hi = tiers["high"]
+    rate = random.uniform(float(lo), float(hi))
+    return round(rate / 2, 3)   # payout halved: users receive 50% of the configured tier rate
 
 async def get_settings() -> dict:
     doc = await db.settings.find_one({"key": "global"}, {"_id": 0})
@@ -438,12 +447,17 @@ async def get_settings() -> dict:
                 "globalRoiPaused": False,
                 "penaltyRate": 0.005,
                 "roiRunHourUtc": 1,
-                "rateTiers": {"low": [0.800, 0.990], "mid": [1.000, 1.300], "high": [1.301, 2.000]},
+                "rateTiers": dict(DEFAULT_RATE_TIERS),
+                "tierProbs": dict(DEFAULT_TIER_PROBS),
                 "displayTotalDeposit": None,
             },
         }
         await db.settings.insert_one(dict(doc))
-    return doc["value"]
+    val = doc["value"]
+    val.setdefault("rateTiers", dict(DEFAULT_RATE_TIERS))
+    val.setdefault("tierProbs", dict(DEFAULT_TIER_PROBS))
+    val.setdefault("penaltyRate", 0.005)
+    return val
 
 async def compute_public_stats() -> dict:
     """Landing-page platform stats. Capped at MAX_DISPLAY_DEPOSIT. ROI paid is always
@@ -553,6 +567,11 @@ class GlobalRoiReq(BaseModel):
 
 class LandingStatsReq(BaseModel):
     totalDeposit: float | None = None  # None => auto (daily rotating)
+
+class RoiEngineReq(BaseModel):
+    penaltyRate: float | None = None            # fraction, e.g. 0.005 = 0.5%
+    rateTiers: dict | None = None               # {"low":[lo,hi],"mid":[lo,hi],"high":[lo,hi]} in percent
+    tierProbs: dict | None = None               # {"low":0.8,"mid":0.15,"high":0.05} fractions
 
 # ----------------------------------------------------------------------------
 # Helpers to assemble user financials
@@ -1578,6 +1597,44 @@ async def admin_landing_stats(body: LandingStatsReq, admin: dict = Depends(requi
                       f"Landing total deposit display set to {'AUTO' if val is None else val}")
     return {"ok": True, "stats": await compute_public_stats()}
 
+@api.patch("/admin/settings/roi-engine")
+async def admin_roi_engine(body: RoiEngineReq, admin: dict = Depends(require_admin)):
+    settings = await get_settings()
+
+    def _valid_tier(t):
+        return (isinstance(t, (list, tuple)) and len(t) == 2
+                and all(isinstance(x, (int, float)) for x in t)
+                and 0 <= float(t[0]) <= float(t[1]) <= 100)
+
+    if body.penaltyRate is not None:
+        pr = float(body.penaltyRate)
+        if not (0 <= pr <= 1):
+            raise HTTPException(status_code=400, detail="penaltyRate must be a fraction between 0 and 1 (e.g. 0.005 = 0.5%).")
+        settings["penaltyRate"] = round(pr, 5)
+
+    if body.rateTiers is not None:
+        for k in ("low", "mid", "high"):
+            if k not in body.rateTiers or not _valid_tier(body.rateTiers[k]):
+                raise HTTPException(status_code=400, detail=f"rateTiers.{k} must be [low, high] with 0 <= low <= high <= 100.")
+        settings["rateTiers"] = {k: [round(float(body.rateTiers[k][0]), 3), round(float(body.rateTiers[k][1]), 3)] for k in ("low", "mid", "high")}
+
+    if body.tierProbs is not None:
+        probs = {}
+        for k in ("low", "mid", "high"):
+            v = body.tierProbs.get(k)
+            if not isinstance(v, (int, float)) or not (0 <= float(v) <= 1):
+                raise HTTPException(status_code=400, detail=f"tierProbs.{k} must be a fraction between 0 and 1.")
+            probs[k] = float(v)
+        total = probs["low"] + probs["mid"] + probs["high"]
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="Probabilities must sum to a positive value.")
+        settings["tierProbs"] = {k: round(probs[k] / total, 4) for k in probs}  # normalise to 1
+
+    await db.settings.update_one({"key": "global"}, {"$set": {"value": settings}})
+    await write_audit(admin["id"], "set_roi_engine", "system",
+                      f"penalty={settings.get('penaltyRate')} tiers={settings.get('rateTiers')} probs={settings.get('tierProbs')}")
+    return {"ok": True, "settings": settings}
+
 @api.get("/admin/audit")
 async def admin_audit(admin: dict = Depends(require_admin)):
     items = await db.audit.find({}, {"_id": 0}).sort("createdAt", -1).to_list(200)
@@ -1616,7 +1673,7 @@ async def run_roi_cycle(manual: bool = False) -> int:
         deposit_base = round(active_base.get(u["id"], 0), 4)
         if deposit_base <= 0:
             continue
-        rate = generate_roi_rate()
+        rate = generate_roi_rate(settings)
         amount = round(deposit_base * rate / 100.0, 4)
         new_records.append({
             "id": str(uuid.uuid4()), "userId": u["id"], "depositBase": deposit_base,

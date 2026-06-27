@@ -39,6 +39,7 @@ export default function AdminPanel() {
   const [wallets, setWallets] = useState([]);
   const [audit, setAudit] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [engine, setEngine] = useState(null);
   const [search, setSearch] = useState("");
   const [roleEmail, setRoleEmail] = useState("");
   const [roleValue, setRoleValue] = useState("admin");
@@ -57,6 +58,15 @@ export default function AdminPanel() {
     const s = (await api.get("/admin/settings")).data.settings;
     setSettings(s);
     setLandingDep(s.displayTotalDeposit != null ? String(s.displayTotalDeposit) : "");
+    setEngine({
+      penalty: ((s.penaltyRate ?? 0.005) * 100).toString(),
+      low: [String(s.rateTiers?.low?.[0] ?? 0.8), String(s.rateTiers?.low?.[1] ?? 0.99)],
+      mid: [String(s.rateTiers?.mid?.[0] ?? 1.0), String(s.rateTiers?.mid?.[1] ?? 1.3)],
+      high: [String(s.rateTiers?.high?.[0] ?? 1.31), String(s.rateTiers?.high?.[1] ?? 2.0)],
+      pLow: String(Math.round((s.tierProbs?.low ?? 0.8) * 100)),
+      pMid: String(Math.round((s.tierProbs?.mid ?? 0.15) * 100)),
+      pHigh: String(Math.round((s.tierProbs?.high ?? 0.05) * 100)),
+    });
   };
   const loadFraud = async () => setFraud((await api.get("/admin/fraud")).data.flagged);
   const loadModeReqs = async () => setModeReqs((await api.get("/admin/referral-mode-requests")).data.requests);
@@ -123,6 +133,29 @@ export default function AdminPanel() {
     await api.patch("/admin/settings/landing-stats", { totalDeposit: val });
     toast.success(val === null ? "Landing stats set to AUTO" : `Landing total deposit set to $${Number(val).toLocaleString()}`);
     loadSettings();
+  };
+  const saveRoiEngine = async () => {
+    const e = engine;
+    const pl = Number(e.pLow), pm = Number(e.pMid), ph = Number(e.pHigh);
+    if (pl + pm + ph !== 100) {
+      toast.error(`Probabilities must add up to 100% (currently ${pl + pm + ph}%).`);
+      return;
+    }
+    try {
+      await api.patch("/admin/settings/roi-engine", {
+        penaltyRate: Number(e.penalty) / 100,
+        rateTiers: {
+          low: [Number(e.low[0]), Number(e.low[1])],
+          mid: [Number(e.mid[0]), Number(e.mid[1])],
+          high: [Number(e.high[0]), Number(e.high[1])],
+        },
+        tierProbs: { low: pl / 100, mid: pm / 100, high: ph / 100 },
+      });
+      toast.success("ROI engine updated — applies on the next daily cycle");
+      loadSettings();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not update ROI engine");
+    }
   };
   const setRole = async () => {    try {
       await api.patch("/admin/users/role", { email: roleEmail, role: roleValue });
@@ -522,24 +555,75 @@ export default function AdminPanel() {
                 </div>
               </div>
               <div className="glass rounded-xl p-6">
-                <div className="overline text-white/40 mb-2">Withdrawal Penalty Rate</div>
-                <div className="ff-mono text-2xl font-bold text-[#ff4757]">{(settings.penaltyRate * 100).toFixed(2)}%</div>
-                <p className="text-white/40 text-xs mt-1">Applied 05:00–06:00 PKT</p>
-              </div>
-              <div className="glass rounded-xl p-6">
                 <div className="overline text-white/40 mb-2">ROI Run Time (UTC)</div>
                 <div className="ff-mono text-2xl font-bold text-[#6c63ff]">{String(settings.roiRunHourUtc).padStart(2, "0")}:00</div>
                 <p className="text-white/40 text-xs mt-1">06:00 PKT daily</p>
               </div>
-              <div className="glass rounded-xl p-6">
-                <div className="overline text-white/40 mb-2">Rate Tiers (hidden engine)</div>
-                <div className="ff-mono text-xs text-white/60 space-y-1 mt-2">
-                  <div>80% → 0.80–0.99%</div>
-                  <div>15% → 1.00–1.30%</div>
-                  <div>5% → 1.31–2.00%</div>
+            </div>
+
+            {/* Editable ROI engine */}
+            {engine && (
+              <div className="glass rounded-xl p-6 mt-4" data-testid="roi-engine-control">
+                <div className="overline text-white/40 mb-1">ROI Rate Engine & Penalty</div>
+                <p className="text-white/50 text-xs mb-5 max-w-2xl">
+                  Configure the hidden daily-rate tiers, their probabilities, and the early-withdrawal penalty.
+                  <span className="text-[#00d4a0]"> Payouts are always halved</span> — whatever you set here, users receive <span className="text-white">50%</span> of it
+                  (e.g. set 0.80% → users earn 0.40%).
+                </p>
+
+                {/* Penalty */}
+                <div className="mb-6 max-w-xs">
+                  <label className="text-xs text-white/50 block mb-1.5">Withdrawal penalty (%) · applied 05:00–06:00 PKT</label>
+                  <input type="number" step="0.01" value={engine.penalty}
+                    onChange={(e) => setEngine({ ...engine, penalty: e.target.value })}
+                    className="inp rounded-sm px-3 py-2 text-sm w-full" data-testid="engine-penalty" />
+                </div>
+
+                {/* Tiers + probabilities */}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-12 gap-3 text-[11px] uppercase tracking-wider text-white/30 px-1">
+                    <span className="col-span-3">Tier</span>
+                    <span className="col-span-3">Min %</span>
+                    <span className="col-span-3">Max %</span>
+                    <span className="col-span-3">Probability %</span>
+                  </div>
+                  {[
+                    { key: "low", label: "Low", prob: "pLow", color: "#00d4a0" },
+                    { key: "mid", label: "Mid", prob: "pMid", color: "#f0a500" },
+                    { key: "high", label: "High", prob: "pHigh", color: "#6c63ff" },
+                  ].map((t) => (
+                    <div key={t.key} className="grid grid-cols-12 gap-3 items-center">
+                      <span className="col-span-3 flex items-center gap-2 text-sm ff-mono">
+                        <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />{t.label}
+                      </span>
+                      <input type="number" step="0.01" value={engine[t.key][0]}
+                        onChange={(e) => setEngine({ ...engine, [t.key]: [e.target.value, engine[t.key][1]] })}
+                        className="inp rounded-sm px-3 py-2 text-sm col-span-3" data-testid={`engine-${t.key}-min`} />
+                      <input type="number" step="0.01" value={engine[t.key][1]}
+                        onChange={(e) => setEngine({ ...engine, [t.key]: [engine[t.key][0], e.target.value] })}
+                        className="inp rounded-sm px-3 py-2 text-sm col-span-3" data-testid={`engine-${t.key}-max`} />
+                      <input type="number" step="1" value={engine[t.prob]}
+                        onChange={(e) => setEngine({ ...engine, [t.prob]: e.target.value })}
+                        className="inp rounded-sm px-3 py-2 text-sm col-span-3" data-testid={`engine-${t.key}-prob`} />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between mt-5">
+                  <span className={`ff-mono text-xs ${Number(engine.pLow) + Number(engine.pMid) + Number(engine.pHigh) === 100 ? "text-white/40" : "text-[#ff4757]"}`} data-testid="engine-prob-sum">
+                    Probabilities total: {Number(engine.pLow) + Number(engine.pMid) + Number(engine.pHigh)}% (must equal 100%)
+                  </span>
+                  <button onClick={saveRoiEngine} className="btn-finance rounded-sm px-6 py-2.5 text-sm" data-testid="save-roi-engine">Save engine</button>
+                </div>
+
+                <div className="border-t border-white/10 mt-5 pt-4 ff-mono text-xs text-white/50 space-y-1" data-testid="engine-effective-preview">
+                  <div className="overline text-white/30 mb-1">Effective payout (after 50% halving)</div>
+                  <div>{engine.pLow}% chance → {(Number(engine.low[0]) / 2).toFixed(3)}–{(Number(engine.low[1]) / 2).toFixed(3)}%</div>
+                  <div>{engine.pMid}% chance → {(Number(engine.mid[0]) / 2).toFixed(3)}–{(Number(engine.mid[1]) / 2).toFixed(3)}%</div>
+                  <div>{engine.pHigh}% chance → {(Number(engine.high[0]) / 2).toFixed(3)}–{(Number(engine.high[1]) / 2).toFixed(3)}%</div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </main>
