@@ -427,7 +427,7 @@ def generate_roi_rate() -> float:
         rate = random.uniform(1.000, 1.300)   # 15% chance: 1.0% - 1.3%
     else:
         rate = random.uniform(1.301, 2.000)   # 5% chance: 1.31% - 2.0%
-    return round(rate, 3)
+    return round(rate / 2, 3)   # payout halved: users receive 50% of the tier rate
 
 async def get_settings() -> dict:
     doc = await db.settings.find_one({"key": "global"}, {"_id": 0})
