@@ -5,6 +5,8 @@ import { ArrowRight, ShieldCheck, Zap, TrendingUp, Lock, Menu, X, Sparkles, Acti
 import PriceTicker from "@/components/PriceTicker";
 import { NetworkBadge, netLabel } from "@/components/shared";
 import { LogoMark, LogoWordmark } from "@/components/Logo";
+import Footer from "@/components/Footer";
+import WhatsAppButton from "@/components/WhatsAppButton";
 import api from "@/lib/api";
 
 const HERO_BG =
@@ -754,13 +756,8 @@ export default function Landing() {
         </Reveal>
       </section>
 
-      <footer className="border-t border-white/5 py-10 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-white/30 text-sm">
-          <LogoWordmark height={26} />
-          <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> All systems operational</span>
-          <span>© {new Date().getFullYear()} CAVI</span>
-        </div>
-      </footer>
+      <Footer />
+      <WhatsAppButton />
     </div>
   );
 }

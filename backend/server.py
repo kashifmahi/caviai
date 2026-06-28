@@ -383,6 +383,13 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+async def try_current_user(request: Request):
+    """Optional auth — returns the user if a valid token is present, else None."""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
+
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -548,6 +555,16 @@ class ReferralWithdrawReq(BaseModel):
 
 class ReferralModeReq(BaseModel):
     mode: str  # weekly/monthly
+
+class ChatStartReq(BaseModel):
+    name: str | None = None
+    email: str | None = None
+
+class ChatMsgReq(BaseModel):
+    text: str
+
+class AdminReplyReq(BaseModel):
+    text: str
 
 class ModeRequestActionReq(BaseModel):
     status: str  # approved/rejected
@@ -1365,6 +1382,81 @@ async def withdraw_referrals(body: ReferralWithdrawReq, user: dict = Depends(get
     notify_withdrawal(user, doc)
     return {"withdrawal": doc, "balance": (await referral_balance(user["id"]))["balance"]}
 
+
+# ----------------------------------------------------------------------------
+# LIVE CHAT (custom, owned) — visitor widget + admin inbox
+# ----------------------------------------------------------------------------
+@api.post("/chat/session")
+async def chat_start(body: ChatStartReq, request: Request):
+    user = await try_current_user(request)
+    now = datetime.now(timezone.utc).isoformat()
+    sid = str(uuid.uuid4())
+    doc = {
+        "id": sid,
+        "userId": user["id"] if user else None,
+        "name": (body.name or (user.get("username") if user else None) or "Guest"),
+        "email": (body.email or (user.get("email") if user else None)),
+        "status": "open",
+        "unreadForAdmin": 0,
+        "createdAt": now,
+        "lastMessageAt": now,
+    }
+    await db.chat_sessions.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return {"session": doc}
+
+@api.post("/chat/{session_id}/message")
+async def chat_post_message(session_id: str, body: ChatMsgReq):
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    sess = await db.chat_sessions.find_one({"id": session_id})
+    if not sess:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {"id": str(uuid.uuid4()), "sessionId": session_id, "sender": "user",
+           "text": text[:2000], "createdAt": now}
+    await db.chat_messages.insert_one(dict(msg))
+    await db.chat_sessions.update_one({"id": session_id},
+        {"$set": {"lastMessageAt": now, "status": "open"}, "$inc": {"unreadForAdmin": 1}})
+    msg.pop("_id", None)
+    return {"message": msg}
+
+@api.get("/chat/{session_id}/messages")
+async def chat_get_messages(session_id: str):
+    msgs = await db.chat_messages.find({"sessionId": session_id}, {"_id": 0}).sort("createdAt", 1).to_list(500)
+    return {"messages": msgs}
+
+@api.get("/admin/chat/sessions")
+async def admin_chat_sessions(admin: dict = Depends(require_admin)):
+    sessions = await db.chat_sessions.find({}, {"_id": 0}).sort("lastMessageAt", -1).to_list(300)
+    total_unread = sum(s.get("unreadForAdmin", 0) for s in sessions)
+    return {"sessions": sessions, "totalUnread": total_unread}
+
+@api.get("/admin/chat/{session_id}/messages")
+async def admin_chat_messages(session_id: str, admin: dict = Depends(require_admin)):
+    await db.chat_sessions.update_one({"id": session_id}, {"$set": {"unreadForAdmin": 0}})
+    msgs = await db.chat_messages.find({"sessionId": session_id}, {"_id": 0}).sort("createdAt", 1).to_list(500)
+    sess = await db.chat_sessions.find_one({"id": session_id}, {"_id": 0})
+    return {"messages": msgs, "session": sess}
+
+@api.post("/admin/chat/{session_id}/reply")
+async def admin_chat_reply(session_id: str, body: AdminReplyReq, admin: dict = Depends(require_admin)):
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Reply cannot be empty")
+    sess = await db.chat_sessions.find_one({"id": session_id})
+    if not sess:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {"id": str(uuid.uuid4()), "sessionId": session_id, "sender": "admin",
+           "text": text[:2000], "createdAt": now, "adminName": admin.get("username")}
+    await db.chat_messages.insert_one(dict(msg))
+    await db.chat_sessions.update_one({"id": session_id},
+        {"$set": {"lastMessageAt": now, "unreadForAdmin": 0}})
+    msg.pop("_id", None)
+    return {"message": msg}
+
 # ----------------------------------------------------------------------------
 # PRICES (CoinGecko, in-memory cached)
 # ----------------------------------------------------------------------------
@@ -1745,6 +1837,8 @@ async def startup():
     await db.referral_claims.create_index([("referrerId", 1), ("refereeId", 1), ("period", 1)], unique=True)
     await db.referral_claims.create_index([("referrerId", 1), ("mode", 1), ("claimMonth", 1)])
     await db.referral_mode_requests.create_index([("userId", 1), ("status", 1)])
+    await db.chat_messages.create_index([("sessionId", 1), ("createdAt", 1)])
+    await db.chat_sessions.create_index("lastMessageAt")
     await seed_admin()
     await get_settings()
     asyncio.create_task(roi_scheduler())

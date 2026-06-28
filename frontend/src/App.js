@@ -17,6 +17,9 @@ import WithdrawalsPage from "@/pages/dashboard/WithdrawalsPage";
 import ProfilePage from "@/pages/dashboard/ProfilePage";
 import ReferralsPage from "@/pages/dashboard/ReferralsPage";
 import AdminPanel from "@/pages/AdminPanel";
+import Terms from "@/pages/Terms";
+import Privacy from "@/pages/Privacy";
+import LiveChat from "@/components/LiveChat";
 
 function App() {
   return (
@@ -30,6 +33,8 @@ function App() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route
               path="/app"
               element={
@@ -54,6 +59,7 @@ function App() {
               }
             />
           </Routes>
+          <LiveChat />
         </AuthProvider>
       </BrowserRouter>
     </div>

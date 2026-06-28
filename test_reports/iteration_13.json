@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 13: tested new live-chat (visitor + admin), site footer, WhatsApp landing button, and /terms /privacy legal pages. 15/15 backend tests passed and all frontend flows verified end-to-end including visitor->admin reply round-trip via UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_livechat.py",
+    "/app/test_reports/pytest/iter13_livechat.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LiveChat poll interval is 4s and only runs while panel is open; that is fine, but visitors will not see new admin replies until they open the panel. Consider a lightweight background unread-poll if presence indicator becomes a requirement.",
+    "Visitor chat endpoints are intentionally public (only the session uuid is the secret). The uuid is stored in localStorage (cavi_chat_sid) so anyone with that uuid can read/post — acceptable per spec but worth noting in the threat model.",
+    "Footer 'How it works' anchor (/#how) is non-testid; not asserted but works."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_livechat.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15)",
+    "frontend": "100% (all checked flows)"
+  },
+  "test_credentials": "admin superadmin@cavi.io / Cavi@Admin2025; user hajraanwar157@gmail.com / NewCavi@2026",
+  "seed_data_creation": "Created several chat sessions (TEST_ prefixed messages) during testing; left in DB as harmless test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend live-chat suite: /app/backend/tests/test_livechat.py covers visitor + admin chat + regression for /api/admin/audit and admin/user login. Re-runnable. JUnit XML at /app/test_reports/pytest/iter13_livechat.xml. Frontend tests verified: livechat-toggle/panel/input/send on landing; whatsapp-button only on landing (not on /login, /terms); footer with terms/privacy/email/whatsapp on landing, /terms, /privacy; /terms and /privacy headings render; admin Live Chat tab admin-tab-support -> admin-support panel -> admin-chat-session-{id} -> admin-chat-reply-input + admin-chat-reply-send works end-to-end and the reply appears in visitor's thread.",
+  "verified_flows": [
+    "POST /api/chat/session -> session.id",
+    "POST /api/chat/{id}/message accepts text, rejects empty (400), rejects unknown id (404)",
+    "GET /api/chat/{id}/messages returns ascending-ordered messages",
+    "Admin chat endpoints require admin (401/403 without token)",
+    "GET /api/admin/chat/sessions returns sessions + totalUnread; unreadForAdmin incremented on visitor msg",
+    "GET /api/admin/chat/{id}/messages resets unreadForAdmin to 0",
+    "POST /api/admin/chat/{id}/reply -> visitor sees msg with sender='admin'",
+    "Regression: /api/admin/audit 200 for admin, admin + user login still work",
+    "Frontend landing: livechat-toggle opens livechat-panel, send renders message",
+    "Frontend landing: whatsapp-button -> https://wa.me/447311130308",
+    "Frontend footer present on /, /terms, /privacy with footer-terms, footer-privacy, footer-email (mailto:support@cavi.solutions), footer-whatsapp (wa.me)",
+    "Frontend: whatsapp-button NOT present on /login or /terms (landing-only)",
+    "Frontend admin: admin-tab-support -> admin-support panel, lists sessions, click session, type reply, send -> reply visible"
+  ]
+}

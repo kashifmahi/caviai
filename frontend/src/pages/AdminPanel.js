@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Users, TrendingUp, ArrowUpFromLine, Wallet, ShieldCheck, Settings as SettingsIcon,
-  LayoutDashboard, Search, Download, Play, Eye, Pause, Check, X, Copy, ArrowLeft, KeyRound, ShieldAlert, Gift,
+  LayoutDashboard, Search, Download, Play, Eye, Pause, Check, X, Copy, ArrowLeft, KeyRound, ShieldAlert, Gift, Headset, Send,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -15,6 +15,7 @@ const TABS = [
   { id: "roi", label: "ROI Control", icon: TrendingUp },
   { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
   { id: "referrals", label: "Referrals", icon: Gift },
+  { id: "support", label: "Live Chat", icon: Headset },
   { id: "wallets", label: "Deposits & Wallets", icon: Wallet },
   { id: "access", label: "Admin Access", icon: ShieldCheck },
   { id: "security", label: "Security", icon: ShieldAlert },
@@ -46,6 +47,10 @@ export default function AdminPanel() {
   const [keyModal, setKeyModal] = useState(null);
   const [fraud, setFraud] = useState([]);
   const [modeReqs, setModeReqs] = useState([]);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const [chatMsgs, setChatMsgs] = useState([]);
+  const [chatReply, setChatReply] = useState("");
   const [landingDep, setLandingDep] = useState("");
   const isSuper = user?.role === "superadmin";
 
@@ -70,6 +75,22 @@ export default function AdminPanel() {
   };
   const loadFraud = async () => setFraud((await api.get("/admin/fraud")).data.flagged);
   const loadModeReqs = async () => setModeReqs((await api.get("/admin/referral-mode-requests")).data.requests);
+  const loadChatSessions = async () => setChatSessions((await api.get("/admin/chat/sessions")).data.sessions);
+  const openChat = async (sid) => {
+    setActiveChat(sid);
+    const { data } = await api.get(`/admin/chat/${sid}/messages`);
+    setChatMsgs(data.messages || []);
+    loadChatSessions();
+  };
+  const sendReply = async (e) => {
+    e.preventDefault();
+    const t = chatReply.trim();
+    if (!t || !activeChat) return;
+    setChatReply("");
+    await api.post(`/admin/chat/${activeChat}/reply`, { text: t });
+    const { data } = await api.get(`/admin/chat/${activeChat}/messages`);
+    setChatMsgs(data.messages || []);
+  };
 
   useEffect(() => {
     loadStats(); loadUsers();
@@ -79,6 +100,7 @@ export default function AdminPanel() {
     if (tab === "users" || tab === "roi") loadUsers();
     if (tab === "withdrawals") loadWithdrawals();
     if (tab === "referrals") loadModeReqs();
+    if (tab === "support") loadChatSessions();
     if (tab === "wallets") loadWallets();
     if (tab === "security") loadFraud();
     if (tab === "settings") loadSettings();
@@ -413,6 +435,50 @@ export default function AdminPanel() {
                   {!modeReqs.length && <tr><td colSpan={5} className="p-8 text-center text-white/40">No referral mode requests.</td></tr>}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* SUPPORT — live chat inbox */}
+        {tab === "support" && (
+          <div data-testid="admin-support">
+            <h1 className="ff-head text-2xl font-bold mb-2">Live Chat</h1>
+            <p className="text-white/50 text-sm mb-6">Reply to visitor and client messages in real time. Sessions with unread messages are highlighted.</p>
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="glass rounded-xl p-3 md:col-span-1 max-h-[32rem] overflow-y-auto" data-testid="admin-chat-list">
+                {chatSessions.length === 0 && <p className="text-white/40 text-sm p-3">No conversations yet.</p>}
+                {chatSessions.map((s) => (
+                  <button key={s.id} onClick={() => openChat(s.id)}
+                    className={`w-full text-left rounded-lg px-3 py-2.5 mb-1 transition-colors ${activeChat === s.id ? "bg-white/10" : "hover:bg-white/5"}`}
+                    data-testid={`admin-chat-session-${s.id}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-white truncate">{s.name || "Guest"}</span>
+                      {s.unreadForAdmin > 0 && <span className="ml-2 text-[10px] bg-[#00d4a0] text-[#04140f] rounded-full px-1.5 py-0.5 font-bold">{s.unreadForAdmin}</span>}
+                    </div>
+                    <div className="text-xs text-white/40 truncate">{s.email || "no email"}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="glass rounded-xl md:col-span-2 flex flex-col h-[32rem]">
+                {!activeChat ? (
+                  <div className="flex-1 flex items-center justify-center text-white/40 text-sm">Select a conversation to reply</div>
+                ) : (
+                  <>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="admin-chat-thread">
+                      {chatMsgs.map((m) => (
+                        <div key={m.id} className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}>
+                          <div className={`text-sm rounded-2xl px-3.5 py-2.5 max-w-[75%] ${m.sender === "admin" ? "bg-[#6c63ff] text-white rounded-tr-sm" : "bg-white/8 text-white/85 rounded-tl-sm"}`}>{m.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={sendReply} className="p-3 border-t border-white/10 flex items-center gap-2">
+                      <input value={chatReply} onChange={(e) => setChatReply(e.target.value)} placeholder="Type a reply…"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#6c63ff]/50" data-testid="admin-chat-reply-input" />
+                      <button type="submit" className="btn-finance rounded-full w-10 h-10 flex items-center justify-center" data-testid="admin-chat-reply-send"><Send className="w-4 h-4" /></button>
+                    </form>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
