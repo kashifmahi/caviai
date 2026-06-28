@@ -51,6 +51,7 @@ SMTP_PASS = os.environ.get('SMTP_PASS')
 SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER or SUPPORT_EMAIL)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
 ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL')
+CHAT_ALERT_EMAILS = [e for e in {ADMIN_NOTIFY_EMAIL, "kashifmahi271@gmail.com"} if e]
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 
 UPLOAD_DIR = ROOT_DIR / "uploads" / "avatars"
@@ -269,6 +270,28 @@ def notify_withdrawal_decision(user: dict, wd: dict, status: str):
         )
         fire_email(user["email"], "Your CAVI withdrawal was rejected", html,
                    f"Your withdrawal of {amt} ({wd.get('network')}) was rejected. The amount remains in your balance. Contact {SUPPORT_EMAIL}.")
+
+def notify_chat_message(session: dict, text: str):
+    """Alert admins when a visitor starts a new chat conversation."""
+    link = f"{FRONTEND_URL}/admin" if FRONTEND_URL else "the admin panel"
+    name = session.get("name") or "A visitor"
+    email = session.get("email") or "no email provided"
+    snippet = (text or "")[:300]
+    html = _email_shell(
+        "New live chat message",
+        f"<p><b style='color:#fff;'>{name}</b> just started a chat on the website.</p>"
+        f"<table style='margin:16px 0;font-size:14px;'>"
+        + _row("From", name)
+        + _row("Email", email)
+        + "</table>"
+        f"<p style='background:#0f1830;border-left:3px solid #00d4a0;padding:12px 16px;"
+        f"border-radius:6px;color:#cbd5e1;'>{snippet}</p>"
+        + _btn(link, "Open Live Chat in admin"),
+    )
+    text_body = f"New live chat from {name} ({email}): {snippet}. Reply in the admin panel: {link}"
+    for addr in CHAT_ALERT_EMAILS:
+        fire_email(addr, f"[CAVI] New live chat from {name}", html, text_body)
+
 
 def notify_withdrawal(user: dict, wd: dict):
     amt = _money(wd["amount"])
@@ -1419,6 +1442,8 @@ async def chat_post_message(session_id: str, body: ChatMsgReq):
     await db.chat_messages.insert_one(dict(msg))
     await db.chat_sessions.update_one({"id": session_id},
         {"$set": {"lastMessageAt": now, "status": "open"}, "$inc": {"unreadForAdmin": 1}})
+    if sess.get("unreadForAdmin", 0) == 0:
+        notify_chat_message(sess, text)  # alert admins on the start of a new unread batch
     msg.pop("_id", None)
     return {"message": msg}
 
