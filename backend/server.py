@@ -52,6 +52,7 @@ SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER or SUPPORT_EMAIL)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
 ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL')
 CHAT_ALERT_EMAILS = [e for e in {ADMIN_NOTIFY_EMAIL, "kashifmahi271@gmail.com"} if e]
+ADMIN_ALERT_EMAILS = CHAT_ALERT_EMAILS  # recipients for new-signup / login alerts
 MAX_DEPOSITS = 3  # demo deposit attempts before security flag
 
 UPLOAD_DIR = ROOT_DIR / "uploads" / "avatars"
@@ -270,6 +271,54 @@ def notify_withdrawal_decision(user: dict, wd: dict, status: str):
         )
         fire_email(user["email"], "Your CAVI withdrawal was rejected", html,
                    f"Your withdrawal of {amt} ({wd.get('network')}) was rejected. The amount remains in your balance. Contact {SUPPORT_EMAIL}.")
+
+def _human_time(iso: str | None = None) -> str:
+    dt = datetime.fromisoformat(iso) if iso else datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    utc = dt.astimezone(timezone.utc)
+    pkt = utc.astimezone(timezone(timedelta(hours=5)))
+    return f"{utc.strftime('%Y-%m-%d %H:%M')} UTC ({pkt.strftime('%I:%M %p')} PKT)"
+
+def notify_admin_signup(user: dict):
+    ident = user.get("email") or user.get("walletAddress") or "—"
+    joined = _human_time(user.get("createdAt"))
+    method = "Wallet" if user.get("loginType") == "wallet" else "Email"
+    html = _email_shell(
+        "🎉 New user joined CAVI",
+        f"<p>A new user just created an account.</p>"
+        f"<table style='margin:16px 0;font-size:14px;'>"
+        + _row("Username", user.get("username", "—"))
+        + _row("Identifier", ident, break_word=True)
+        + _row("Sign-up method", method)
+        + _row("Joined", joined)
+        + "</table>"
+        + _btn(f"{FRONTEND_URL}/admin" if FRONTEND_URL else "#", "View in admin panel"),
+    )
+    text = f"New user joined CAVI: {user.get('username')} ({ident}) via {method} at {joined}."
+    for addr in ADMIN_ALERT_EMAILS:
+        fire_email(addr, f"[CAVI] New user joined: {user.get('username')}", html, text)
+
+def notify_admin_login(user: dict, request=None):
+    ident = user.get("email") or user.get("walletAddress") or "—"
+    when = _human_time()
+    ip = _client_ip(request) if request else "—"
+    method = "Wallet" if user.get("loginType") == "wallet" else "Email"
+    html = _email_shell(
+        "🔐 User login",
+        f"<p>A user just signed in to CAVI.</p>"
+        f"<table style='margin:16px 0;font-size:14px;'>"
+        + _row("Username", user.get("username", "—"))
+        + _row("Identifier", ident, break_word=True)
+        + _row("Method", method)
+        + _row("IP", ip)
+        + _row("Time", when)
+        + "</table>"
+        + _btn(f"{FRONTEND_URL}/admin" if FRONTEND_URL else "#", "View in admin panel"),
+    )
+    text = f"User login: {user.get('username')} ({ident}) via {method} from {ip} at {when}."
+    for addr in ADMIN_ALERT_EMAILS:
+        fire_email(addr, f"[CAVI] Login: {user.get('username')}", html, text)
 
 def notify_chat_message(session: dict, text: str):
     """Alert admins when a visitor starts a new chat conversation."""
@@ -890,6 +939,7 @@ async def verify_otp(body: VerifyOtpReq):
     )
     fire_email(email, "Welcome to CAVI — your wallets are ready 🎉", welcome_html,
                f"Hi {doc['username']}, your email is verified and your CAVI account is live. CAVI puts your assets to work through validator-node staking across ETH, SOL, BNB and TRC20, paying staking rewards daily.")
+    notify_admin_signup(doc)
     return {"token": create_access_token(uid), "user": public_user(doc)}
 
 @api.post("/auth/resend-otp")
@@ -1024,6 +1074,7 @@ async def login(body: LoginReq, request: Request):
     await db.users.update_one({"id": user["id"]}, {"$set": {"lastLoginAt": now_iso}})
     user["lastLoginAt"] = now_iso
     await _maybe_notify_new_device(user, request)
+    notify_admin_login(user, request)
     return {"token": create_access_token(user["id"]), "user": public_user(user)}
 
 @api.post("/auth/wallet-nonce")
@@ -1074,6 +1125,7 @@ async def wallet_login(body: WalletVerifyReq):
     await db.auth_nonces.update_one({"_id": nonce_doc["_id"]}, {"$set": {"consumed": True}})
 
     user = await db.users.find_one({"walletAddress": body.address})
+    is_new_user = user is None
     if not user:
         uid = str(uuid.uuid4())
         username = body.username or f"{body.address[:6]}...{body.address[-4:]}"
@@ -1092,6 +1144,10 @@ async def wallet_login(body: WalletVerifyReq):
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.users.update_one({"id": user["id"]}, {"$set": {"lastLoginAt": now_iso}})
     user["lastLoginAt"] = now_iso
+    if is_new_user:
+        notify_admin_signup(user)
+    else:
+        notify_admin_login(user)
     return {"token": create_access_token(user["id"]), "user": public_user(user)}
 
 @api.get("/auth/me")
